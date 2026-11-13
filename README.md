@@ -42,7 +42,8 @@ game (any API) ──► gamescope composites ──► "Sharp" filter
 | EASU FP16 (gamescope's FSR 1) | 0.47 ms |
 | RCAS 1280x720 (both cases) | 0.16 ms |
 | **FSRCNNX 8 FP16 (7 passes) + Catmull-Rom downscale** | **2.21 ms** (network 1.92 + downscale 0.29) |
-| FSRCNNX at 1024x576 input | ~3 ms |
+| FSRCNNX at 1024x576 input | 3.39 ms |
+| FSRCNNX 640x400 -> 1280x800, direct x2 path (estimated) | ~1.4 ms |
 
 ### Quality (5 4K Elden Ring screenshots downscaled to 1280x720, before RCAS)
 
@@ -66,6 +67,38 @@ FSRCNNX alone shows more detail but also more shimmer on aliased games. The laye
 | **0.5 (default)** | **35.88 dB** | 70 % | **1.429** |
 | 1 (FSRCNNX) | 35.58 dB | 84 % | 1.486 |
 
+## Which render resolution for a 1280x800 Steam Deck?
+
+Measured with `scripts/sweep_800p.py` (raw numbers in `results/sweep-800p-2026-11-13.txt`): 16:10 renders upscaled
+to 1280x800, 5 4K screenshots cropped to 16:10, simulated slow pan, before RCAS. "Detail" is the fine detail kept
+(100 % = reference), "shimmer" the temporal error (lower is better). GrossoModo cost on the Deck is extrapolated from
+the measured passes (network proportional to render pixels; x2 exact skips the downscale pass).
+
+| Render | Scale | Pixels | GrossoModo cost | FSR 1: PSNR / detail / shimmer | GrossoModo (strength 0.5): PSNR / detail / shimmer |
+|---|---|---|---|---|---|
+| **640x400** | x2.00 | 25 % | **1.37 ms** (direct x2) | 33.95 dB / 46 % / 1.647 | 34.47 dB / 57 % / 1.610 |
+| 720x450 | x1.78 | 32 % | 2.05 ms | 34.61 dB / 53 % / 1.604 | 35.11 dB / 63 % / 1.570 |
+| **800x500** | x1.60 | 39 % | **2.45 ms** | 35.43 dB / 59 % / 1.534 | **35.98 dB / 70 % / 1.494** |
+| 854x534 | x1.50 | 45 % | 2.75 ms | 35.83 dB / 63 % / 1.497 | 36.35 dB / 74 % / 1.456 |
+| 960x600 | x1.33 | 56 % | 3.39 ms | 37.08 dB / 71 % / 1.392 | 37.67 dB / 82 % / 1.347 |
+| 1024x640 | x1.25 | 64 % | 3.82 ms | 37.44 dB / 74 % / 1.344 | 37.99 dB / 85 % / 1.302 |
+
+At every resolution GrossoModo gains about **+0.5 dB, +11 points of detail and a little less shimmer** over FSR 1.
+Its cost grows with the render resolution, so the choice is about where those ~2 ms are best spent:
+
+- **800x500 (x1.6): the recommended setting.** GrossoModo at 800x500 beats FSR 1 at 854x534 on every measure (fidelity,
+  detail and shimmer) while the game renders 13 % fewer pixels. It is also where FSRCNNX was measured most useful.
+- **640x400 (x2): the performance setting.** The exact x2 runs the network's native scale with a dedicated shader
+  path (the last pass writes the final image: no x2 buffer, no downscale), so GrossoModo costs only ~1.4 ms. It
+  reaches the fidelity of FSR 1 at 720x450 with 22 % fewer pixels, with more detail and less shimmer. Image quality
+  is lower than at 800x500: for games that are heavy on the GPU.
+- Above 960x600 (x1.33 and below), GrossoModo costs over 3 ms for a gain that FSR 1's sharpening partly hides:
+  keep FSR 1 there (`enabled=0`).
+- 16:9-only games: **800x450** (x1.6 to 1280x720) and **640x360** (exact x2) are the equivalents.
+
+To get 800x500 or 640x400 in games that do not list them, set Steam's per-game **"Game resolution"** (game
+properties, Steam Deck section): gamescope then presents a display of that size and most games render at it.
+
 ## Install on a Steam Deck
 
 Requires SteamOS 3.x (gamescope with `cap_sys_nice`, Vulkan loader 1.4). Have a way back (Desktop Mode or SSH).
@@ -81,8 +114,8 @@ back, or reboot). Uninstall: `sudo /etc/grossomodo/uninstall.sh`.
 
 ### Use
 
-1. In the game, pick a resolution **below the screen**, ideally with the screen's shape: **800x500** for 16:10 games
-   (x1.6 to 1280x800), **800x450** for 16:9 games such as Elden Ring.
+1. In the game (or in Steam's per-game "Game resolution"), pick **800x500** (recommended) or **640x400**
+   (performance); **800x450** / **640x360** for 16:9-only games. See the section above.
 2. Quick Access Menu: scaling filter **Sharp**, and **lower the sharpness** (FSRCNNX needs less).
 3. Settings in `/etc/grossomodo/grossomodo.conf`, re-read every 2 seconds, no restart needed:
 

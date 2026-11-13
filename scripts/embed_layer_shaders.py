@@ -27,5 +27,19 @@ with open(out, "w") as f:
     for name, a, b, c, g in plan:
         f.write(f'    {{"{name}", k_{name}, sizeof(k_{name}), k_{name}_fp16, sizeof(k_{name}_fp16), '
                 f'"{a}", "{b}", "{c}", "{g}"}},\n')
-    f.write("};\n\n} // namespace fsup\n")
+    f.write("};\n")
+    direct = os.path.join(src, "direct.txt")
+    if os.path.exists(direct):
+        name, a, b, c, g = open(direct).read().split()
+        for suffix in ("", "_fp16"):
+            data = open(os.path.join(src, name + suffix + ".spv"), "rb").read()
+            words = [int.from_bytes(data[i:i + 4], "little") for i in range(0, len(data), 4)]
+            f.write(f"static const uint32_t k_{name}{suffix}[] = {{\n")
+            for i in range(0, len(words), 8):
+                f.write("    " + ", ".join(f"0x{w:08x}u" for w in words[i:i + 8]) + ",\n")
+            f.write("};\n")
+        f.write("\n// Agrégation directe pour un x2 exact : remplace les deux dernières passes.\n#define FSUP_HAS_DIRECT 1\n")
+        f.write(f'static const PassInfo k_direct = {{"{name}", k_{name}, sizeof(k_{name}), k_{name}_fp16, '
+                f'sizeof(k_{name}_fp16), "{a}", "{b}", "{c}", "{g}"}};\n')
+    f.write("\n} // namespace fsup\n")
 print(f"{len(plan)} passes -> {out}")

@@ -1,0 +1,13 @@
+5 captures, panoramique de 6 images, vers 1280x800, avant RCAS
+  coût Deck estimé : EASU 0.52 ms ; GrossoModo = réseau + réduction
+      rendu facteur pixels  coût GM | FSR1 PSNR détail scint. | GM0,5 PSNR détail scint. | GM1 PSNR détail scint.
+   640x400  x2.00      25%   1.37ms |    33.95dB  46.4%  1.647 |    34.47dB  57.1%  1.610 |    34.29dB  71.8%  1.647 
+   720x450  x1.78      32%   2.05ms |    34.61dB  53.3%  1.604 |    35.11dB  63.1%  1.570 |    34.91dB  76.7%  1.618 
+   800x500  x1.60      39%   2.45ms |    35.43dB  59.4%  1.534 |    35.98dB  69.8%  1.494 |    35.69dB  83.9%  1.549 
+   854x534  x1.50      45%   2.75ms |    35.83dB  63.4%  1.497 |    36.35dB  74.2%  1.456 |    35.97dB  88.6%  1.519 
+   960x600  x1.33      56%   3.39ms |    37.08dB  70.6%  1.392 |    37.67dB  81.5%  1.347 |    37.11dB  95.9%  1.431 
+  1024x640  x1.25      64%   3.82ms |    37.44dB  74.3%  1.344 |    37.99dB  85.4%  1.302 |    37.33dB  99.8%  1.395 
+
+real	2m27.445s
+user	8m7.554s
+sys	0m54.000s

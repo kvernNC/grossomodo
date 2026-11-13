@@ -198,6 +198,16 @@ int main(int argc, char **argv)
             while (ps >> p.name >> p.in >> p.skip >> p.out >> p.grid)
                 plan.push_back(p);
         }
+        // x2 exact : l'agrégation directe écrit l'image finale (pas d'image x2 ni de réduction).
+        const bool direct = outW == 2 * in.w && outH == 2 * in.h && std::ifstream(dir + "/direct.txt").good();
+        if (direct) {
+            std::istringstream ds(std::string(readFile(dir + "/direct.txt").data(), readFile(dir + "/direct.txt").size()));
+            PassDesc p;
+            ds >> p.name >> p.in >> p.skip >> p.out >> p.grid;
+            p.out = "FINAL";
+            plan.resize(plan.size() - 2);
+            plan.push_back(p);
+        }
 
         Ctx c;
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -414,11 +424,15 @@ int main(int argc, char **argv)
         }
 
         writeRgba(argv[3], outW, outH, downFin.map);
-        if (!x2Path.empty())
+        if (!x2Path.empty() && !direct)
             writeRgba(x2Path, out2x.w, out2x.h, down2x.map);
 
-        std::printf("GPU : %s, %s, %ux%u -> %ux%u -> %ux%u, %d répétitions\n", c.props.deviceName, fp16 ? "FP16" : "FP32",
-                    in.w, in.h, out2x.w, out2x.h, outW, outH, reps);
+        if (direct)
+            std::printf("GPU : %s, %s, %ux%u -> %ux%u (x2 direct), %d répétitions\n", c.props.deviceName, fp16 ? "FP16" : "FP32",
+                        in.w, in.h, outW, outH, reps);
+        else
+            std::printf("GPU : %s, %s, %ux%u -> %ux%u -> %ux%u, %d répétitions\n", c.props.deviceName, fp16 ? "FP16" : "FP32",
+                        in.w, in.h, out2x.w, out2x.h, outW, outH, reps);
         if (!c.timestampBits) {
             std::printf("  (pas de timestamps sur cette file)\n");
             return 0;

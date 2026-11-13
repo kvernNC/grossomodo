@@ -126,6 +126,35 @@ void main() {
 """
             shaders.append(code)
             plan.append((src_tex, "none", "OUT2X", "lr"))
+            direct = (src_tex, HEADER.format(src=os.path.basename(src_path)) + EASU_PRELUDE + """
+// Variante directe, pour un agrandissement x2 exact (ex. 640x400 -> 1280x800) : l'agrégation écrit l'image finale
+// elle-même (pas d'image x2 intermédiaire ni de passe de réduction), avec le mélange FSR 1 (strength) et l'écran partagé.
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p, lrSize()))) return;
+""" + "\n".join(body) + """
+    vec2 lr = vec2(lrSize());
+    ivec2 outSize = imageSize(outRgb);
+    AU4 c1, c2, c3, c4;
+    FsrEasuCon(c1, c2, c3, c4, lr.x, lr.y, lr.x, lr.y, float(outSize.x), float(outSize.y));
+    int mid = outSize.x / 2;
+    for (int ix = 0; ix < 2; ++ix) {
+        for (int iy = 0; iy < 2; ++iy) {
+            ivec2 o = p * 2 + ivec2(ix, iy);
+            if (SPLIT != 0 && o.x < mid) continue;
+            if (SPLIT != 0 && o.x < mid + 2) { imageStore(outRgb, o, vec4(1.0)); continue; }
+            vec3 bil = textureLod(srcRgb, (vec2(o) + 0.5) / vec2(outSize), 0.0).rgb;
+            vec3 c = clamp(bil + (float(res[ix * 2 + iy]) - dot(bil, LUMA709)), 0.0, 1.0);
+            if (pc.strength < 0.999) {
+                AF3 easu;
+                FsrEasuF(easu, AU2(o), c1, c2, c3, c4);
+                c = mix(vec3(easu), c, clamp(pc.strength, 0.0, 1.0));
+            }
+            imageStore(outRgb, o, vec4(clamp(c, 0.0, 1.0), 1.0));
+        }
+    }
+}
+""")
             i += 2
             continue
         q = passes[i + 1]  # la moitié 4-7 de la même couche
@@ -186,6 +215,15 @@ void main() {
     shaders.append(HEADER.format(src=os.path.basename(src_path)) + final)
     plan.append(("none", "none", "FINAL", "final"))
 
+    inc = "-I" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "third_party", "gamescope")
+    with open(os.path.join(out_dir, "pass_direct.comp"), "w") as sf:
+        sf.write(direct[1])
+    for suffix, defs in (("", []), ("_fp16", ["-DUSE_FP16"])):
+        subprocess.run(["glslangValidator", "-V", "--target-env", "vulkan1.2", *defs, inc,
+                        os.path.join(out_dir, "pass_direct.comp"), "-o", os.path.join(out_dir, "pass_direct" + suffix + ".spv"),
+                        "--quiet"], check=True)
+    with open(os.path.join(out_dir, "direct.txt"), "w") as fp:
+        fp.write(f"pass_direct {direct[0]} none OUTPUT lr\n")
     with open(os.path.join(out_dir, "plan.txt"), "w") as fp:
         for n, (code, (a, b, c, g)) in enumerate(zip(shaders, plan)):
             base = os.path.join(out_dir, f"pass_{n:02d}")
@@ -199,6 +237,20 @@ void main() {
             fp.write(f"pass_{n:02d} {a} {b} {c} {g}\n")
     print(f"{len(shaders)} dispatches -> {out_dir}")
 
+
+# EASU (FidelityFX FSR 1, même code que gamescope) et constantes de mélange, pour la variante directe x2.
+EASU_PRELUDE = """
+layout(constant_id = 0) const int SPLIT = 0;
+layout(push_constant) uniform PushConstants { float strength; } pc;
+#define A_GPU 1
+#define A_GLSL 1
+#include "ffx_a.h"
+#define FSR_EASU_F 1
+AF4 FsrEasuRF(AF2 p) { return AF4(textureGather(srcRgb, p, 0)); }
+AF4 FsrEasuGF(AF2 p) { return AF4(textureGather(srcRgb, p, 1)); }
+AF4 FsrEasuBF(AF2 p) { return AF4(textureGather(srcRgb, p, 2)); }
+#include "ffx_fsr1.h"
+"""
 
 # Variantes de réduction de l'image x2 vers la taille finale, choisies par --downscale.
 DOWNSCALE_CR9 = """

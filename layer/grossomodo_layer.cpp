@@ -200,6 +200,7 @@ struct DeviceData {
     VkPipelineLayout layout{};
     VkPipeline pipes[kPasses]{};
     VkPipeline splitFinal{};  // dernière passe en écran partagé (constante SPLIT = 1)
+    VkPipeline direct{}, directSplit{};  // agrégation directe pour un x2 exact (sans image x2 ni réduction)
     VkSampler sampler{};
     VkDescriptorPool pool{};
     VkDescriptorSet ring[kRing][kPasses]{};
@@ -209,6 +210,7 @@ struct DeviceData {
     bool needsInit = false;
     uint64_t frames = 0;
     bool loggedSkip = false;
+    bool loggedDirect = false;
 };
 
 std::unordered_map<void *, InstanceData> g_instances;
@@ -304,6 +306,29 @@ bool setupPipelines(DeviceData &d, bool fp16)
         d.DestroyShaderModule(d.device, module, nullptr);
         if (r != VK_SUCCESS) return false;
     }
+
+#ifdef FSUP_HAS_DIRECT
+    {
+        VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        smi.codeSize = fp16 ? k_direct.size16 : k_direct.size32;
+        smi.pCode = fp16 ? k_direct.spv16 : k_direct.spv32;
+        VkShaderModule module;
+        if (d.CreateShaderModule(d.device, &smi, nullptr, &module) != VK_SUCCESS) return false;
+        VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, module, "main", nullptr};
+        cpi.layout = d.layout;
+        VkResult r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &d.direct);
+        if (r == VK_SUCCESS) {
+            const int32_t one = 1;
+            VkSpecializationMapEntry e{0, 0, 4};
+            VkSpecializationInfo spec{1, &e, 4, &one};
+            cpi.stage.pSpecializationInfo = &spec;
+            r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &d.directSplit);
+        }
+        d.DestroyShaderModule(d.device, module, nullptr);
+        if (r != VK_SUCCESS) return false;
+    }
+#endif
 
     VkSamplerCreateInfo si{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     si.magFilter = si.minFilter = VK_FILTER_LINEAR;
@@ -429,20 +454,41 @@ bool recordUpscale(DeviceData &d, VkCommandBuffer cb, const CbState &st, uint32_
         if (!std::strcmp(name, "B")) return d.b.view;
         return fallback;
     };
+    // Étapes : les 8 passes (x2 puis réduction vers la taille de sortie), ou, pour un x2 exact, les 6 premières puis
+    // l'agrégation directe qui écrit l'image de sortie.
+    struct Step {
+        const PassInfo *pi;
+        VkPipeline pipe;
+        bool toDst, outputGrid;
+    };
+    const bool useDirect = d.direct && dw == 2 * sw && dh == 2 * sh;
+    std::vector<Step> steps;
+    if (useDirect) {
+#ifdef FSUP_HAS_DIRECT
+        for (uint32_t p = 0; p + 2 < kPasses; ++p) steps.push_back({&k_passes[p], d.pipes[p], false, false});
+        steps.push_back({&k_direct, g_config.compare ? d.directSplit : d.direct, true, false});
+#endif
+    } else {
+        for (uint32_t p = 0; p < kPasses; ++p) {
+            const bool final = !std::strcmp(k_passes[p].out, "FINAL");
+            steps.push_back({&k_passes[p], final && g_config.compare ? d.splitFinal : d.pipes[p], final,
+                             !std::strcmp(k_passes[p].grid, "final")});
+        }
+    }
+
     VkDescriptorSet *sets = d.ring[d.ringPos];
     d.ringPos = (d.ringPos + 1) % kRing;
     std::vector<VkWriteDescriptorSet> writes;
-    std::vector<VkDescriptorImageInfo> infos(kPasses * kBindings);
-    writes.reserve(kPasses * kBindings);
-    for (uint32_t p = 0; p < kPasses; ++p) {
-        const PassInfo &pi = k_passes[p];
-        const bool final = !std::strcmp(pi.out, "FINAL");
+    std::vector<VkDescriptorImageInfo> infos(steps.size() * kBindings);
+    writes.reserve(steps.size() * kBindings);
+    for (size_t p = 0; p < steps.size(); ++p) {
+        const PassInfo &pi = *steps[p].pi;
         VkDescriptorImageInfo *ii = &infos[p * kBindings];
         ii[0] = {set.srcSampler, set.src, VK_IMAGE_LAYOUT_GENERAL};
         ii[1] = {VK_NULL_HANDLE, mapView(pi.in, d.a.view), VK_IMAGE_LAYOUT_GENERAL};
         ii[2] = {VK_NULL_HANDLE, mapView(pi.skip, d.a.view), VK_IMAGE_LAYOUT_GENERAL};
         ii[3] = {VK_NULL_HANDLE, mapView(pi.out, d.b.view), VK_IMAGE_LAYOUT_GENERAL};
-        ii[4] = {VK_NULL_HANDLE, final ? set.dst : d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
+        ii[4] = {VK_NULL_HANDLE, steps[p].toDst ? set.dst : d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
         ii[5] = {VK_NULL_HANDLE, d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
         ii[6] = {d.sampler, d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
         for (uint32_t k = 0; k < kBindings; ++k) {
@@ -463,14 +509,17 @@ bool recordUpscale(DeviceData &d, VkCommandBuffer cb, const CbState &st, uint32_
         d.CmdDispatch(cb, gx, gy, gz);
     }
     barrier(d, cb);  // les images intermédiaires de l'image précédente ne sont plus lues
-    for (uint32_t p = 0; p < kPasses; ++p) {
-        const bool final = !std::strcmp(k_passes[p].grid, "final");
-        const uint32_t gw = final ? dw : sw, gh = final ? dh : sh;
-        d.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, final && g_config.compare ? d.splitFinal : d.pipes[p]);
+    for (size_t p = 0; p < steps.size(); ++p) {
+        const uint32_t gw = steps[p].outputGrid ? dw : sw, gh = steps[p].outputGrid ? dh : sh;
+        d.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, steps[p].pipe);
         d.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.layout, 0, 1, &sets[p], 0, nullptr);
-        if (final) d.CmdPushConstants(cb, d.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &g_config.strength);
+        if (steps[p].toDst) d.CmdPushConstants(cb, d.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &g_config.strength);
         d.CmdDispatch(cb, (gw + 7) / 8, (gh + 7) / 8, 1);
-        if (p + 1 < kPasses) barrier(d, cb);
+        if (p + 1 < steps.size()) barrier(d, cb);
+    }
+    if (useDirect && !d.loggedDirect) {
+        logf("x2 exact : agrégation directe (%zu passes, sans image x2 ni réduction)", steps.size());
+        d.loggedDirect = true;
     }
     if (d.frames++ == 0) logf("première image : %ux%u -> %ux%u par FSRCNNX 8 à la place d'EASU", sw, sh, dw, dh);
     return true;
@@ -562,6 +611,8 @@ VKAPI_ATTR void VKAPI_CALL DestroyDevice(VkDevice device, const VkAllocationCall
         for (Tex *t : {&d->feat, &d->a, &d->b, &d->out2x}) freeTex(*d, *t);
         for (VkPipeline p : d->pipes) if (p) d->DestroyPipeline(device, p, nullptr);
         if (d->splitFinal) d->DestroyPipeline(device, d->splitFinal, nullptr);
+        if (d->direct) d->DestroyPipeline(device, d->direct, nullptr);
+        if (d->directSplit) d->DestroyPipeline(device, d->directSplit, nullptr);
         d->DestroyDescriptorPool(device, d->pool, nullptr);
         d->DestroySampler(device, d->sampler, nullptr);
         d->DestroyPipelineLayout(device, d->layout, nullptr);

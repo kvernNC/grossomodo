@@ -317,3 +317,16 @@ erreur temporelle = écart moyen entre la variation d'une image à l'autre en so
 **0,5 devient la valeur par défaut** : meilleur PSNR, moins de scintillement que FSR 1 et que FSRCNNX seuls, et +10
 points de détail par rapport à FSR 1. Limite : les rendus de test sont réduits par moyenne (antialiasés) ; sur un jeu
 plus crénelé comme Arkham Knight, l'écart de scintillement de FSRCNNX seul est sûrement plus grand.
+
+## Résolution idéale pour un Deck en 1280x800 (13/11/2026)
+
+`scripts/sweep_800p.py`, résultats bruts dans `results/sweep-800p-2026-11-13.txt` (tableau repris dans le README).
+GrossoModo gagne partout environ +0,5 dB, +11 points de détail et un peu moins de scintillement sur FSR 1 ; son coût
+croît avec la résolution de rendu. Recommandation : **800x500** (x1,6, GrossoModo à 800x500 bat FSR 1 à 854x534 sur
+toutes les mesures avec 13 % de pixels en moins) ; **640x400** en mode performance, avec un **chemin x2 direct**
+(nouvelle variante `pass_direct` du générateur : l'agrégation écrit l'image finale avec le mélange FSR 1 et l'écran
+partagé ; 7 passes au lieu de 8, ni image x2 ni réduction ; identique à l'octet à strength=1 et à 1/255 près à 0,5,
+car le chemin complet arrondit FSRCNNX en 8 bits avant le mélange). La couche choisit ce chemin seule quand la sortie
+fait exactement le double de l'entrée. Vérifié avec le faux gamescope en 640x400 et 800x500 -> 1280x800 (identique
+au banc). Optimisation des convolutions : le Deck tourne déjà à ~45 % de sa puissance FP16 sur les couches du réseau,
+donc des tuiles en mémoire partagée apporteraient peu ; le levier principal est la résolution d'entrée.
