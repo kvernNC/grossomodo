@@ -53,7 +53,7 @@ code = code.replace("void main() {\nif (any(greaterThanEqual(gl_GlobalInvocation
 luma = "vec4(res, 0.0, 0.0, 0.0)" in code or "vec4(res[0], 0.0, 0.0, 0.0)" in code
 lite = "//!WIDTH 2 HOOKED.w *" in text
 if lite:
-    head = head.replace("layout(binding = 1) uniform writeonly image2D out_image;", "layout(binding = 1, rgba16f) uniform writeonly image2D out_image;")
+    head = head.replace("layout(binding = 1) uniform writeonly image2D out_image;", "layout(binding = 1, r16f) uniform writeonly image2D out_image;")
 # Variante luminance : RAVU sur la luminance, couleur = bilinéaire + (luminance RAVU - luminance bilinéaire).
 head += ("#define TEX(p) vec4(dot(texture(src_tex, (p)).rgb, LUMA_W))\n" if luma else "#define TEX(p) texture(src_tex, (p))\n")
 code = code.replace("imageStore(out_image, ivec2(gl_GlobalInvocationID), vec4(res, 0.0, 0.0, 0.0));",
@@ -69,6 +69,8 @@ if lite:
 // Réduction de l'image x2 de RAVU-Lite (luminance) vers la sortie : Catmull-Rom en 9 lectures bilinéaires,
 // couleur = bilinéaire de la source + (luminance réduite - luminance bilinéaire).
 layout(local_size_x = 8, local_size_y = 8) in;
+// SPLIT = 1 : écran partagé, la moitié gauche est laissée à FSR 1 (déjà écrite), trait blanc au milieu.
+layout(constant_id = 0) const int SPLIT = 0;
 layout(binding = 0) uniform sampler2D src_tex;
 layout(binding = 1) uniform writeonly image2D out_image;
 layout(binding = 2) uniform sampler2D x2_tex;
@@ -93,6 +95,11 @@ void main()
 {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     if (any(greaterThanEqual(pos, ivec2(sizes.zw)))) return;
+    if (SPLIT != 0) {
+        int mid = int(sizes.z) / 2;
+        if (pos.x < mid) return;
+        if (pos.x == mid) { imageStore(out_image, pos, vec4(1.0)); return; }
+    }
     vec2 uv = (vec2(pos) + 0.5) / sizes.zw;
     vec2 x2 = 2.0 * sizes.xy;
     float y = all(equal(sizes.zw, x2)) ? texelFetch(x2_tex, pos, 0).x : cr9(uv, x2);

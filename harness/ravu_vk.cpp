@@ -225,7 +225,7 @@ int main(int argc, char **argv)
         const bool lite = std::ifstream(dir + "/final.spv").good();
         Tex src = makeTex(c, in.w, in.h, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         Tex fin = makeTex(c, outW, outH, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-        Tex x2 = makeTex(c, in.w * 2, in.h * 2, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+        Tex x2 = makeTex(c, in.w * 2, in.h * 2, VK_FORMAT_R16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
         size_t upSize = in.px.size();
         for (Lut &l : luts) {
             l.tex = makeTex(c, l.w, l.h, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);

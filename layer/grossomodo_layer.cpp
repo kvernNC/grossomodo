@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// VK_LAYER_GROSSOMODO_upscale : couche Vulkan chargée dans gamescope, qui remplace la passe EASU de FSR 1 par FSRCNNX 8
-// (8 dispatches embarqués, voir layer/fsrcnnx8_spv.h). Rien n'est modifié dans gamescope ni dans le jeu.
+// VK_LAYER_GROSSOMODO_upscale : couche Vulkan chargée dans gamescope, qui remplace la passe EASU de FSR 1 par RAVU-Lite
+// (bjin, mpv-prescalers ; shaders et table embarqués, voir layer/ravu_spv.h). Rien n'est modifié dans gamescope ni dans
+// le jeu. Deux dispatches : RAVU-Lite fait un x2 de la luminance à la résolution du jeu (image R16F), puis une passe à
+// la taille de sortie réduit ce x2 (Catmull-Rom ; lecture directe pour un x2 exact) et recompose la couleur
+// (bilinéaire + écart de luminance). Gamescope applique ensuite RCAS comme d'habitude.
 //
 // Principe (gamescope, src/rendervulkan.cpp, CVulkanCmdBuffer::dispatch) : pour chaque dispatch, gamescope lie son
 // pipeline, met à jour un descripteur neuf (liaison 1 = image de sortie, liaison 3 = échantillonneurs, image du jeu
 // en case 0), le lie, puis appelle vkCmdDispatch. La couche :
 //   - reconnaît les modules SPIR-V d'EASU (nom de fonction « easuPass( » dans le SPIR-V ; « FsrEasuH » = FP16) ;
 //   - suit les pipelines EASU, le pipeline et le descripteur liés à chaque command buffer ;
-//   - au vkCmdDispatch d'un pipeline EASU, enregistre ses 8 passes (image du jeu -> image de sortie de gamescope) au
+//   - au vkCmdDispatch d'un pipeline EASU, enregistre ses 2 passes (image du jeu -> image de sortie de gamescope) au
 //     lieu du dispatch d'origine. Gamescope relie tout au dispatch suivant (RCAS) et pose lui-même la barrière sur
 //     l'image de sortie, qu'il croit avoir écrite.
 // En cas de doute (format HDR, image inconnue, couche désactivée), le dispatch d'origine passe : c'est FSR 1.
 //
 // Configuration : /etc/grossomodo/grossomodo.conf (ou $GROSSOMODO_CONFIG), relue toutes les 2 s :
 //   enabled=1     0 : FSR 1 d'origine
+//   compare=0     1 : écran partagé, FSR 1 à gauche, RAVU à droite
 // Journal : /tmp/grossomodo-<uid>.log. La couche ne s'active que dans gamescope (ou si GROSSOMODO_FORCE=1, tests).
 
 #include <vulkan/vk_layer.h>
@@ -34,7 +38,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "fsrcnnx8_spv.h"
+#include "ravu_spv.h"
 
 #if defined(__GNUC__)
 #define FSUP_EXPORT extern "C" __attribute__((visibility("default")))
@@ -45,9 +49,9 @@
 namespace fsup {
 namespace {
 
-constexpr uint32_t kPasses = sizeof(k_passes) / sizeof(k_passes[0]);
-constexpr uint32_t kRing = 8;          // jeux de descripteurs par passe, en rotation (images en vol de gamescope : 2-3)
-constexpr uint32_t kBindings = 7;
+constexpr uint32_t kPasses = 2;          // x2 RAVU-Lite, puis réduction + couleur
+constexpr uint32_t kRing = 8;            // jeux de descripteurs par passe, en rotation (images en vol de gamescope : 2-3)
+constexpr uint32_t kBindings = 3;        // 0 : image du jeu ; 1 : image de stockage écrite ; 2 : table ou image x2
 
 std::mutex g_lock;
 
@@ -101,8 +105,7 @@ bool isGamescope()
 
 struct Config {
     bool enabled = true;
-    bool compare = false;  // écran partagé : FSR 1 à gauche, FSRCNNX à droite
-    float strength = 0.5f; // 1 = FSRCNNX seul ; 0,5 (défaut) = moitié du détail de FSRCNNX ajoutée à FSR 1
+    bool compare = false;  // écran partagé : FSR 1 à gauche, RAVU à droite
     time_t lastCheck = 0;
     time_t mtime = -1;
 };
@@ -117,7 +120,7 @@ void refreshConfig()
     if (!path) path = "/etc/grossomodo/grossomodo.conf";
     struct stat st{};
     if (stat(path, &st) != 0) {
-        if (g_config.mtime != 0) logf("config %s absente : FSRCNNX actif par défaut", path);
+        if (g_config.mtime != 0) logf("config %s absente : RAVU actif par défaut", path);
         g_config.mtime = 0;
         g_config.enabled = true;
         return;
@@ -126,19 +129,16 @@ void refreshConfig()
     g_config.mtime = st.st_mtime;
     if (FILE *f = std::fopen(path, "r")) {
         char line[128];
+        g_config.enabled = true;
         g_config.compare = false;
-        g_config.strength = 0.5f;
         while (std::fgets(line, sizeof line, f)) {
             int v;
             if (std::sscanf(line, " enabled = %d", &v) == 1) g_config.enabled = v != 0;
             if (std::sscanf(line, " compare = %d", &v) == 1) g_config.compare = v != 0;
-            float fv;
-            if (std::sscanf(line, " strength = %f", &fv) == 1) g_config.strength = std::min(1.0f, std::max(0.0f, fv));
         }
         std::fclose(f);
     }
-    logf("config %s : enabled=%d compare=%d strength=%.2f", path, int(g_config.enabled), int(g_config.compare),
-         double(g_config.strength));
+    logf("config %s : enabled=%d compare=%d", path, int(g_config.enabled), int(g_config.compare));
 }
 
 // --------------------------------------------------------------------------------------------------- objets suivis
@@ -184,7 +184,8 @@ struct DeviceData {
     FSUP_FN(CreateDescriptorSetLayout) FSUP_FN(DestroyDescriptorSetLayout) FSUP_FN(CreatePipelineLayout)
     FSUP_FN(DestroyPipelineLayout) FSUP_FN(CreateDescriptorPool) FSUP_FN(DestroyDescriptorPool)
     FSUP_FN(AllocateDescriptorSets) FSUP_FN(CreateSampler) FSUP_FN(DestroySampler) FSUP_FN(CmdPipelineBarrier)
-    FSUP_FN(DeviceWaitIdle) FSUP_FN(CmdPushConstants)
+    FSUP_FN(DeviceWaitIdle) FSUP_FN(CmdPushConstants) FSUP_FN(CreateBuffer) FSUP_FN(DestroyBuffer)
+    FSUP_FN(GetBufferMemoryRequirements) FSUP_FN(BindBufferMemory) FSUP_FN(MapMemory) FSUP_FN(CmdCopyBufferToImage)
 #undef FSUP_FN
 
     std::unordered_map<VkShaderModule, bool> easuModules;        // module EASU -> FP16 ?
@@ -195,22 +196,23 @@ struct DeviceData {
     std::unordered_map<VkImage, VkExtent3D> images;
 
     // ressources de l'agrandisseur
-    bool ready = false, failed = false, fp16 = false;
+    bool ready = false, failed = false;
     VkDescriptorSetLayout dsl{};
     VkPipelineLayout layout{};
-    VkPipeline pipes[kPasses]{};
-    VkPipeline splitFinal{};  // dernière passe en écran partagé (constante SPLIT = 1)
-    VkPipeline direct{}, directSplit{};  // agrégation directe pour un x2 exact (sans image x2 ni réduction)
-    VkSampler sampler{};
+    VkPipeline lite{}, final{}, finalSplit{};
+    VkSampler linear{}, nearest{};
     VkDescriptorPool pool{};
     VkDescriptorSet ring[kRing][kPasses]{};
     uint32_t ringPos = 0;
+    Tex lut;                          // table de RAVU-Lite (rgba16f)
+    VkBuffer lutBuf{};                // copie de la table en mémoire visible de l'hôte, envoyée au premier usage
+    VkDeviceMemory lutMem{};
+    bool lutUploaded = false;
     uint32_t srcW = 0, srcH = 0;
-    Tex feat, a, b, out2x;
+    Tex x2;                           // luminance x2 (R16F)
     bool needsInit = false;
     uint64_t frames = 0;
     bool loggedSkip = false;
-    bool loggedDirect = false;
 };
 
 std::unordered_map<void *, InstanceData> g_instances;
@@ -232,14 +234,14 @@ uint32_t memType(DeviceData &d, uint32_t bits, VkMemoryPropertyFlags want)
     return UINT32_MAX;
 }
 
-bool makeTex(DeviceData &d, Tex &t, uint32_t w, uint32_t h, VkFormat format, uint32_t layers, VkImageUsageFlags usage)
+bool makeTex(DeviceData &d, Tex &t, uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usage)
 {
     VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ci.imageType = VK_IMAGE_TYPE_2D;
     ci.format = format;
     ci.extent = {w, h, 1};
     ci.mipLevels = 1;
-    ci.arrayLayers = layers;
+    ci.arrayLayers = 1;
     ci.samples = VK_SAMPLE_COUNT_1_BIT;
     ci.tiling = VK_IMAGE_TILING_OPTIMAL;
     ci.usage = usage;
@@ -253,9 +255,9 @@ bool makeTex(DeviceData &d, Tex &t, uint32_t w, uint32_t h, VkFormat format, uin
     if (d.BindImageMemory(d.device, t.img, t.mem, 0) != VK_SUCCESS) return false;
     VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vi.image = t.img;
-    vi.viewType = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
     vi.format = format;
-    vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, layers};
+    vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     return d.CreateImageView(d.device, &vi, nullptr, &t.view) == VK_SUCCESS;
 }
 
@@ -267,76 +269,56 @@ void freeTex(DeviceData &d, Tex &t)
     t = Tex{};
 }
 
-bool setupPipelines(DeviceData &d, bool fp16)
+bool makePipeline(DeviceData &d, const uint32_t *code, size_t size, int32_t split, VkPipeline &out)
 {
-    VkDescriptorSetLayoutBinding b[kBindings];
-    for (uint32_t i = 0; i < kBindings; ++i)
-        b[i] = {i, (i == 0 || i == 6) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    smi.codeSize = size;
+    smi.pCode = code;
+    VkShaderModule module;
+    // appel direct au suivant : nos propres modules ne doivent pas passer par la détection d'EASU
+    if (d.CreateShaderModule(d.device, &smi, nullptr, &module) != VK_SUCCESS) return false;
+    VkSpecializationMapEntry e{0, 0, 4};
+    VkSpecializationInfo spec{1, &e, 4, &split};
+    VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, module, "main",
+                 split ? &spec : nullptr};
+    cpi.layout = d.layout;
+    VkResult r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &out);
+    d.DestroyShaderModule(d.device, module, nullptr);
+    return r == VK_SUCCESS;
+}
+
+bool setupPipelines(DeviceData &d)
+{
+    VkDescriptorSetLayoutBinding b[kBindings] = {
+        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}};
     VkDescriptorSetLayoutCreateInfo dli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     dli.bindingCount = kBindings;
     dli.pBindings = b;
     if (d.CreateDescriptorSetLayout(d.device, &dli, nullptr, &d.dsl) != VK_SUCCESS) return false;
-    VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, 4};  // intensité du mélange FSR 1 / FSRCNNX
+    VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, 16};  // tailles : source (xy), sortie de la passe (zw)
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.setLayoutCount = 1;
     pli.pSetLayouts = &d.dsl;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
     if (d.CreatePipelineLayout(d.device, &pli, nullptr, &d.layout) != VK_SUCCESS) return false;
-
-    for (uint32_t i = 0; i < kPasses; ++i) {
-        VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-        smi.codeSize = fp16 ? k_passes[i].size16 : k_passes[i].size32;
-        smi.pCode = fp16 ? k_passes[i].spv16 : k_passes[i].spv32;
-        VkShaderModule module;
-        // appel direct au suivant : nos propres modules ne doivent pas passer par la détection d'EASU
-        if (d.CreateShaderModule(d.device, &smi, nullptr, &module) != VK_SUCCESS) return false;
-        VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-        cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, module, "main", nullptr};
-        cpi.layout = d.layout;
-        VkResult r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &d.pipes[i]);
-        if (r == VK_SUCCESS && i + 1 == kPasses) {
-            const int32_t one = 1;
-            VkSpecializationMapEntry e{0, 0, 4};
-            VkSpecializationInfo spec{1, &e, 4, &one};
-            cpi.stage.pSpecializationInfo = &spec;
-            r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &d.splitFinal);
-        }
-        d.DestroyShaderModule(d.device, module, nullptr);
-        if (r != VK_SUCCESS) return false;
-    }
-
-#ifdef FSUP_HAS_DIRECT
-    {
-        VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-        smi.codeSize = fp16 ? k_direct.size16 : k_direct.size32;
-        smi.pCode = fp16 ? k_direct.spv16 : k_direct.spv32;
-        VkShaderModule module;
-        if (d.CreateShaderModule(d.device, &smi, nullptr, &module) != VK_SUCCESS) return false;
-        VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-        cpi.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, module, "main", nullptr};
-        cpi.layout = d.layout;
-        VkResult r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &d.direct);
-        if (r == VK_SUCCESS) {
-            const int32_t one = 1;
-            VkSpecializationMapEntry e{0, 0, 4};
-            VkSpecializationInfo spec{1, &e, 4, &one};
-            cpi.stage.pSpecializationInfo = &spec;
-            r = d.CreateComputePipelines(d.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &d.directSplit);
-        }
-        d.DestroyShaderModule(d.device, module, nullptr);
-        if (r != VK_SUCCESS) return false;
-    }
-#endif
+    if (!makePipeline(d, k_ravu_lite, sizeof k_ravu_lite, 0, d.lite) ||
+        !makePipeline(d, k_ravu_final, sizeof k_ravu_final, 0, d.final) ||
+        !makePipeline(d, k_ravu_final, sizeof k_ravu_final, 1, d.finalSplit))
+        return false;
 
     VkSamplerCreateInfo si{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     si.magFilter = si.minFilter = VK_FILTER_LINEAR;
     si.addressModeU = si.addressModeV = si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    if (d.CreateSampler(d.device, &si, nullptr, &d.sampler) != VK_SUCCESS) return false;
+    if (d.CreateSampler(d.device, &si, nullptr, &d.linear) != VK_SUCCESS) return false;
+    si.magFilter = si.minFilter = VK_FILTER_NEAREST;
+    if (d.CreateSampler(d.device, &si, nullptr, &d.nearest) != VK_SUCCESS) return false;
 
     VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * kRing * kPasses},
-                                  {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5 * kRing * kPasses}};
+                                  {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kRing * kPasses}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = kRing * kPasses;
     dpi.poolSizeCount = 2;
@@ -348,28 +330,42 @@ bool setupPipelines(DeviceData &d, bool fp16)
     dai.descriptorSetCount = kRing * kPasses;
     dai.pSetLayouts = layouts.data();
     if (d.AllocateDescriptorSets(d.device, &dai, &d.ring[0][0]) != VK_SUCCESS) return false;
-    d.fp16 = fp16;
+
+    // Table : image rgba16f + tampon visible de l'hôte, copié dans le premier command buffer qui l'utilise.
+    if (!makeTex(d, d.lut, kRavuLutW, kRavuLutH, VK_FORMAT_R16G16B16A16_SFLOAT,
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+        return false;
+    VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bi.size = sizeof k_ravu_lut;
+    bi.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    if (d.CreateBuffer(d.device, &bi, nullptr, &d.lutBuf) != VK_SUCCESS) return false;
+    VkMemoryRequirements r;
+    d.GetBufferMemoryRequirements(d.device, d.lutBuf, &r);
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    ai.allocationSize = r.size;
+    ai.memoryTypeIndex = memType(d, r.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (ai.memoryTypeIndex == UINT32_MAX || d.AllocateMemory(d.device, &ai, nullptr, &d.lutMem) != VK_SUCCESS) return false;
+    if (d.BindBufferMemory(d.device, d.lutBuf, d.lutMem, 0) != VK_SUCCESS) return false;
+    void *map = nullptr;
+    if (d.MapMemory(d.device, d.lutMem, 0, VK_WHOLE_SIZE, 0, &map) != VK_SUCCESS) return false;
+    std::memcpy(map, k_ravu_lut, sizeof k_ravu_lut);  // reste mappée : libérée avec la mémoire
     return true;
 }
 
 bool ensureTextures(DeviceData &d, uint32_t w, uint32_t h)
 {
-    if (d.srcW == w && d.srcH == h && d.feat.img) return true;
-    if (d.feat.img) {
-        // changement de résolution du jeu : rare, on attend que le GPU n'utilise plus les anciennes images
+    if (d.srcW == w && d.srcH == h && d.x2.img) return true;
+    if (d.x2.img) {
+        // changement de résolution du jeu : rare, on attend que le GPU n'utilise plus l'ancienne image
         d.DeviceWaitIdle(d.device);
-        for (Tex *t : {&d.feat, &d.a, &d.b, &d.out2x}) freeTex(d, *t);
+        freeTex(d, d.x2);
     }
-    const VkImageUsageFlags st = VK_IMAGE_USAGE_STORAGE_BIT;
-    bool ok = makeTex(d, d.feat, w, h, VK_FORMAT_R16G16B16A16_SFLOAT, 2, st) &&
-              makeTex(d, d.a, w, h, VK_FORMAT_R16G16B16A16_SFLOAT, 2, st) &&
-              makeTex(d, d.b, w, h, VK_FORMAT_R16G16B16A16_SFLOAT, 2, st) &&
-              makeTex(d, d.out2x, 2 * w, 2 * h, VK_FORMAT_R8G8B8A8_UNORM, 1, st | VK_IMAGE_USAGE_SAMPLED_BIT);
-    if (!ok) return false;
+    if (!makeTex(d, d.x2, 2 * w, 2 * h, VK_FORMAT_R16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+        return false;
     d.srcW = w;
     d.srcH = h;
     d.needsInit = true;
-    logf("images intermédiaires %ux%u (x2 : %ux%u)", w, h, 2 * w, 2 * h);
+    logf("image x2 %ux%u", 2 * w, 2 * h);
     return true;
 }
 
@@ -382,15 +378,32 @@ void barrier(DeviceData &d, VkCommandBuffer cb)
                          nullptr, 0, nullptr);
 }
 
+VkImageMemoryBarrier toGeneral(VkImage img, VkImageLayout from, VkAccessFlags src, VkAccessFlags dst)
+{
+    VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    b.srcAccessMask = src;
+    b.dstAccessMask = dst;
+    b.oldLayout = from;
+    b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = img;
+    b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    return b;
+}
+
 // Journalise une raison d'abandon (une seule fois par raison) et renvoie false.
 bool skip(const char *why)
 {
-    static std::unordered_map<std::string, int> seen;
-    if (seen[why]++ == 0) logf("dispatch EASU laissé au FSR 1 d'origine : %s", why);
+    static const char *seen[16];  // littéraux : une comparaison d'adresse suffit
+    static int n = 0;
+    for (int i = 0; i < n; ++i)
+        if (seen[i] == why) return false;
+    if (n < 16) seen[n++] = why;
+    logf("dispatch EASU laissé au FSR 1 d'origine : %s", why);
     return false;
 }
 
-// Enregistre FSRCNNX à la place du dispatch EASU. Renvoie false pour laisser passer le dispatch d'origine.
+// Enregistre RAVU-Lite à la place du dispatch EASU. Renvoie false pour laisser passer le dispatch d'origine.
 bool recordUpscale(DeviceData &d, VkCommandBuffer cb, const CbState &st, uint32_t gx, uint32_t gy, uint32_t gz)
 {
     auto si = d.sets.find(st.set);
@@ -406,6 +419,7 @@ bool recordUpscale(DeviceData &d, VkCommandBuffer cb, const CbState &st, uint32_
     if (is == d.images.end()) return skip("image du jeu inconnue (créée hors de la couche ?)");
     if (id == d.images.end()) return skip("image de sortie inconnue");
     const uint32_t sw = is->second.width, sh = is->second.height, dw = id->second.width, dh = id->second.height;
+    if (dw < sw || dh < sh) return skip("réduction (sortie plus petite que l'image du jeu)");
 
     // HDR (scRGB, PQ) : EASU encode la sortie ; on laisse faire FSR 1.
     const uint32_t cs0 = st.easu->colorspaceMask & 7u;
@@ -417,111 +431,80 @@ bool recordUpscale(DeviceData &d, VkCommandBuffer cb, const CbState &st, uint32_
 
     if (!d.ready) {
         if (d.failed) return false;
-        if (!setupPipelines(d, st.easu->fp16)) {
-            logf("échec de création des pipelines FSRCNNX : FSR 1 d'origine");
+        if (!setupPipelines(d)) {
+            logf("échec de création des pipelines RAVU : FSR 1 d'origine");
             d.failed = true;
             return false;
         }
         d.ready = true;
-        logf("FSRCNNX 8 prêt (%s)", d.fp16 ? "FP16" : "FP32");
+        logf("%s prêt (table %ux%u)", kRavuName, kRavuLutW, kRavuLutH);
     }
     if (!ensureTextures(d, sw, sh)) {
-        logf("échec d'allocation des images intermédiaires : FSR 1 d'origine");
+        logf("échec d'allocation de l'image x2 : FSR 1 d'origine");
         d.failed = true;
         return false;
     }
 
-    if (d.needsInit) {
-        VkImageMemoryBarrier ib[4];
-        Tex *texs[4] = {&d.feat, &d.a, &d.b, &d.out2x};
-        for (int i = 0; i < 4; ++i) {
-            ib[i] = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-            ib[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            ib[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            ib[i].newLayout = VK_IMAGE_LAYOUT_GENERAL;
-            ib[i].srcQueueFamilyIndex = ib[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            ib[i].image = texs[i]->img;
-            ib[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, i < 3 ? 2u : 1u};
-        }
-        d.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
-                             0, nullptr, 4, ib);
-        d.needsInit = false;
+    if (!d.lutUploaded) {
+        VkImageMemoryBarrier b = toGeneral(d.lut.img, VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_ACCESS_TRANSFER_WRITE_BIT);
+        d.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+        VkBufferImageCopy reg{};
+        reg.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        reg.imageExtent = {kRavuLutW, kRavuLutH, 1};
+        d.CmdCopyBufferToImage(cb, d.lutBuf, d.lut.img, VK_IMAGE_LAYOUT_GENERAL, 1, &reg);
+        VkMemoryBarrier m{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        m.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        m.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        d.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &m, 0, nullptr, 0, nullptr);
+        d.lutUploaded = true;
     }
-
-    auto mapView = [&](const char *name, VkImageView fallback) {
-        if (!std::strcmp(name, "FEAT")) return d.feat.view;
-        if (!std::strcmp(name, "A")) return d.a.view;
-        if (!std::strcmp(name, "B")) return d.b.view;
-        return fallback;
-    };
-    // Étapes : les 8 passes (x2 puis réduction vers la taille de sortie), ou, pour un x2 exact, les 6 premières puis
-    // l'agrégation directe qui écrit l'image de sortie.
-    struct Step {
-        const PassInfo *pi;
-        VkPipeline pipe;
-        bool toDst, outputGrid;
-    };
-    const bool useDirect = d.direct && dw == 2 * sw && dh == 2 * sh;
-    std::vector<Step> steps;
-    if (useDirect) {
-#ifdef FSUP_HAS_DIRECT
-        for (uint32_t p = 0; p + 2 < kPasses; ++p) steps.push_back({&k_passes[p], d.pipes[p], false, false});
-        steps.push_back({&k_direct, g_config.compare ? d.directSplit : d.direct, true, false});
-#endif
-    } else {
-        for (uint32_t p = 0; p < kPasses; ++p) {
-            const bool final = !std::strcmp(k_passes[p].out, "FINAL");
-            steps.push_back({&k_passes[p], final && g_config.compare ? d.splitFinal : d.pipes[p], final,
-                             !std::strcmp(k_passes[p].grid, "final")});
-        }
+    if (d.needsInit) {
+        VkImageMemoryBarrier b = toGeneral(d.x2.img, VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+        d.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+        d.needsInit = false;
     }
 
     VkDescriptorSet *sets = d.ring[d.ringPos];
     d.ringPos = (d.ringPos + 1) % kRing;
-    std::vector<VkWriteDescriptorSet> writes;
-    std::vector<VkDescriptorImageInfo> infos(steps.size() * kBindings);
-    writes.reserve(steps.size() * kBindings);
-    for (size_t p = 0; p < steps.size(); ++p) {
-        const PassInfo &pi = *steps[p].pi;
-        VkDescriptorImageInfo *ii = &infos[p * kBindings];
-        ii[0] = {set.srcSampler, set.src, VK_IMAGE_LAYOUT_GENERAL};
-        ii[1] = {VK_NULL_HANDLE, mapView(pi.in, d.a.view), VK_IMAGE_LAYOUT_GENERAL};
-        ii[2] = {VK_NULL_HANDLE, mapView(pi.skip, d.a.view), VK_IMAGE_LAYOUT_GENERAL};
-        ii[3] = {VK_NULL_HANDLE, mapView(pi.out, d.b.view), VK_IMAGE_LAYOUT_GENERAL};
-        ii[4] = {VK_NULL_HANDLE, steps[p].toDst ? set.dst : d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
-        ii[5] = {VK_NULL_HANDLE, d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
-        ii[6] = {d.sampler, d.out2x.view, VK_IMAGE_LAYOUT_GENERAL};
+    // passe 0 : image du jeu -> x2 (table) ; passe 1 : image du jeu + x2 -> image de sortie de gamescope
+    VkDescriptorImageInfo ii[kPasses][kBindings] = {
+        {{d.linear, set.src, VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, d.x2.view, VK_IMAGE_LAYOUT_GENERAL},
+         {d.nearest, d.lut.view, VK_IMAGE_LAYOUT_GENERAL}},
+        {{d.linear, set.src, VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, set.dst, VK_IMAGE_LAYOUT_GENERAL},
+         {d.linear, d.x2.view, VK_IMAGE_LAYOUT_GENERAL}}};
+    VkWriteDescriptorSet writes[kPasses * kBindings];
+    for (uint32_t p = 0; p < kPasses; ++p)
         for (uint32_t k = 0; k < kBindings; ++k) {
-            VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            VkWriteDescriptorSet &w = writes[p * kBindings + k];
+            w = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
             w.dstSet = sets[p];
             w.dstBinding = k;
             w.descriptorCount = 1;
-            w.descriptorType = (k == 0 || k == 6) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-            w.pImageInfo = &ii[k];
-            writes.push_back(w);
+            w.descriptorType = k == 1 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w.pImageInfo = &ii[p][k];
         }
-    }
-    d.UpdateDescriptorSets(d.device, uint32_t(writes.size()), writes.data(), 0, nullptr);
+    d.UpdateDescriptorSets(d.device, kPasses * kBindings, writes, 0, nullptr);
 
     if (g_config.compare) {
         // écran partagé : le FSR 1 d'origine écrit toute l'image (pipeline et descripteur de gamescope encore liés),
-        // FSRCNNX réécrit ensuite la moitié droite.
+        // RAVU réécrit ensuite la moitié droite.
         d.CmdDispatch(cb, gx, gy, gz);
     }
-    barrier(d, cb);  // les images intermédiaires de l'image précédente ne sont plus lues
-    for (size_t p = 0; p < steps.size(); ++p) {
-        const uint32_t gw = steps[p].outputGrid ? dw : sw, gh = steps[p].outputGrid ? dh : sh;
-        d.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, steps[p].pipe);
-        d.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.layout, 0, 1, &sets[p], 0, nullptr);
-        if (steps[p].toDst) d.CmdPushConstants(cb, d.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &g_config.strength);
-        d.CmdDispatch(cb, (gw + 7) / 8, (gh + 7) / 8, 1);
-        if (p + 1 < steps.size()) barrier(d, cb);
-    }
-    if (useDirect && !d.loggedDirect) {
-        logf("x2 exact : agrégation directe (%zu passes, sans image x2 ni réduction)", steps.size());
-        d.loggedDirect = true;
-    }
-    if (d.frames++ == 0) logf("première image : %ux%u -> %ux%u par FSRCNNX 8 à la place d'EASU", sw, sh, dw, dh);
+    barrier(d, cb);  // l'image x2 de l'image précédente n'est plus lue ; la sortie d'EASU (écran partagé) est écrite
+    const float pcLite[4] = {float(sw), float(sh), float(2 * sw), float(2 * sh)};
+    const float pcFinal[4] = {float(sw), float(sh), float(dw), float(dh)};
+    d.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.lite);
+    d.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.layout, 0, 1, &sets[0], 0, nullptr);
+    d.CmdPushConstants(cb, d.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, pcLite);
+    d.CmdDispatch(cb, (sw + kRavuGroupW - 1) / kRavuGroupW, (sh + kRavuGroupH - 1) / kRavuGroupH, 1);
+    barrier(d, cb);
+    d.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_config.compare ? d.finalSplit : d.final);
+    d.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.layout, 0, 1, &sets[1], 0, nullptr);
+    d.CmdPushConstants(cb, d.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, pcFinal);
+    d.CmdDispatch(cb, (dw + 7) / 8, (dh + 7) / 8, 1);
+    if (d.frames++ == 0)
+        logf("première image : %ux%u -> %ux%u par %s à la place d'EASU%s", sw, sh, dw, dh, kRavuName,
+             dw == 2 * sw && dh == 2 * sh ? " (x2 exact : sans réduction)" : "");
     return true;
 }
 
@@ -587,7 +570,8 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDevice(VkPhysicalDevice phys, const VkDevic
     FSUP_LOAD(CreateDescriptorSetLayout) FSUP_LOAD(DestroyDescriptorSetLayout) FSUP_LOAD(CreatePipelineLayout)
     FSUP_LOAD(DestroyPipelineLayout) FSUP_LOAD(CreateDescriptorPool) FSUP_LOAD(DestroyDescriptorPool)
     FSUP_LOAD(AllocateDescriptorSets) FSUP_LOAD(CreateSampler) FSUP_LOAD(DestroySampler) FSUP_LOAD(CmdPipelineBarrier)
-    FSUP_LOAD(DeviceWaitIdle) FSUP_LOAD(CmdPushConstants)
+    FSUP_LOAD(DeviceWaitIdle) FSUP_LOAD(CmdPushConstants) FSUP_LOAD(CreateBuffer) FSUP_LOAD(DestroyBuffer)
+    FSUP_LOAD(GetBufferMemoryRequirements) FSUP_LOAD(BindBufferMemory) FSUP_LOAD(MapMemory) FSUP_LOAD(CmdCopyBufferToImage)
 #undef FSUP_LOAD
     std::lock_guard<std::mutex> g(g_lock);
     auto ii = g_instances.find(key(phys));
@@ -606,17 +590,18 @@ VKAPI_ATTR void VKAPI_CALL DestroyDevice(VkDevice device, const VkAllocationCall
         d = it->second;
         g_devices.erase(it);
     }
-    if (d->ready) {
+    if (d->ready || d->failed) {
         d->DeviceWaitIdle(device);
-        for (Tex *t : {&d->feat, &d->a, &d->b, &d->out2x}) freeTex(*d, *t);
-        for (VkPipeline p : d->pipes) if (p) d->DestroyPipeline(device, p, nullptr);
-        if (d->splitFinal) d->DestroyPipeline(device, d->splitFinal, nullptr);
-        if (d->direct) d->DestroyPipeline(device, d->direct, nullptr);
-        if (d->directSplit) d->DestroyPipeline(device, d->directSplit, nullptr);
-        d->DestroyDescriptorPool(device, d->pool, nullptr);
-        d->DestroySampler(device, d->sampler, nullptr);
-        d->DestroyPipelineLayout(device, d->layout, nullptr);
-        d->DestroyDescriptorSetLayout(device, d->dsl, nullptr);
+        freeTex(*d, d->x2);
+        freeTex(*d, d->lut);
+        if (d->lutBuf) d->DestroyBuffer(device, d->lutBuf, nullptr);
+        if (d->lutMem) d->FreeMemory(device, d->lutMem, nullptr);
+        for (VkPipeline p : {d->lite, d->final, d->finalSplit}) if (p) d->DestroyPipeline(device, p, nullptr);
+        if (d->pool) d->DestroyDescriptorPool(device, d->pool, nullptr);
+        if (d->linear) d->DestroySampler(device, d->linear, nullptr);
+        if (d->nearest) d->DestroySampler(device, d->nearest, nullptr);
+        if (d->layout) d->DestroyPipelineLayout(device, d->layout, nullptr);
+        if (d->dsl) d->DestroyDescriptorSetLayout(device, d->dsl, nullptr);
     }
     PFN_vkDestroyDevice next = d->DestroyDevice;
     delete d;
