@@ -1,0 +1,24 @@
+# scripts/compare_ls1.py --ravu build/ravu_lite_* (RAVU-Lite luminance x2 + réduction Catmull-Rom)
+5 captures, panoramique de 6 images, vers 1280x800 ; FSR1/GM avant RCAS, LS1 avec sa netteté
+      rendu          méthode     PSNR  détail  scint.
+   640x400              FSR1  33.95dB   46.4%   1.647
+   640x400             GM0.5  34.47dB   57.1%   1.610
+   640x400      ravu_lite_r2  34.22dB   68.2%   1.633
+   640x400      ravu_lite_r3  34.32dB   68.1%   1.630
+   640x400   ravu_lite_ar_r3  34.41dB   61.2%   1.583
+   640x400      ravu_lite_r4  34.34dB   68.3%   1.632
+
+   800x500              FSR1  35.43dB   59.4%   1.534
+   800x500             GM0.5  35.98dB   69.8%   1.494
+   800x500      ravu_lite_r2  35.72dB   79.5%   1.512
+   800x500      ravu_lite_r3  35.81dB   80.8%   1.511
+   800x500   ravu_lite_ar_r3  35.93dB   71.9%   1.460
+   800x500      ravu_lite_r4  35.83dB   81.3%   1.513
+
+   960x600              FSR1  37.08dB   70.6%   1.392
+   960x600             GM0.5  37.67dB   81.5%   1.347
+   960x600      ravu_lite_r2  37.20dB   91.7%   1.375
+   960x600      ravu_lite_r3  37.30dB   93.5%   1.373
+   960x600   ravu_lite_ar_r3  37.56dB   83.4%   1.311
+   960x600      ravu_lite_r4  37.31dB   94.0%   1.376
+

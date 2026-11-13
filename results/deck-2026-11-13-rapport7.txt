@@ -1,0 +1,145 @@
+== 2026-11-13T21:40:24+11:00 7.2.7-valve2-2-neptune-72-g31504582a073
+PRETTY_NAME="SteamOS"
+LS1 : 626b196d799606cd, traduit avec /home/deck/.steam/steam/steamapps/common/SteamLinuxRuntime_4/steamrt4_platform_4.0.20261021.265997/files/lib/x86_64-linux-gnu/libvkd3d-shader.so.1.19.0
+
+## 640x400 -> 1280x800
+shaders/cs_easu_fp16.spv 640x400 -> 1280x800 : GPU 0.522 ms (médiane, timestamps), soumission complète 0.81 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 640x400 -> 1280x800 (x2 direct), 200 répétitions
+  pass_00  none  -> FEAT      0.145 ms
+  pass_01  FEAT  -> A         0.215 ms
+  pass_02  A     -> B         0.213 ms
+  pass_03  B     -> A         0.213 ms
+  pass_04  A     -> B         0.213 ms
+  pass_05  B     -> A         0.181 ms
+  pass_direct  A     -> FINAL     0.953 ms
+  total (médianes)                   2.133 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-zoom-r2) 640x400 -> 1280x800, 200 répétitions : 0.729 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r2) 640x400 -> 1280x800, 200 répétitions : 0.534 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r3) 640x400 -> 1280x800, 200 répétitions : 0.648 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-ar-r3) 640x400 -> 1280x800, 200 répétitions : 0.703 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r4) 640x400 -> 1280x800, 200 répétitions : 0.897 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 qualité variante 2, 640x400 -> 1280x800, 200 répétitions
+  153.spv     0.223 ms
+  154.spv     0.240 ms
+  155.spv     0.266 ms
+  146.spv     0.122 ms
+  total       0.852 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 performance variante 2, 640x400 -> 1280x800, 200 répétitions
+  143.spv     0.319 ms
+  146.spv     0.124 ms
+  total       0.443 ms
+
+## 720x450 -> 1280x800
+shaders/cs_easu_fp16.spv 720x450 -> 1280x800 : GPU 0.522 ms (médiane, timestamps), soumission complète 0.83 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 720x450 -> 1440x900 -> 1280x800, 200 répétitions
+  pass_00  none  -> FEAT      0.183 ms
+  pass_01  FEAT  -> A         0.268 ms
+  pass_02  A     -> B         0.266 ms
+  pass_03  B     -> A         0.266 ms
+  pass_04  A     -> B         0.266 ms
+  pass_05  B     -> A         0.223 ms
+  pass_06  A     -> OUT2X     0.289 ms
+  pass_07  none  -> FINAL     1.061 ms
+  total (médianes)                   2.822 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-zoom-r2) 720x450 -> 1280x800, 200 répétitions : 0.950 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r2) 720x450 -> 1280x800, 200 répétitions : 0.769 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r3) 720x450 -> 1280x800, 200 répétitions : 0.910 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-ar-r3) 720x450 -> 1280x800, 200 répétitions : 0.991 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r4) 720x450 -> 1280x800, 200 répétitions : 1.227 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 qualité variante 2, 720x450 -> 1280x800, 200 répétitions
+  153.spv     0.290 ms
+  154.spv     0.312 ms
+  155.spv     0.332 ms
+  146.spv     0.124 ms
+  total       1.057 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 performance variante 2, 720x450 -> 1280x800, 200 répétitions
+  143.spv     0.401 ms
+  146.spv     0.128 ms
+  total       0.529 ms
+
+## 800x500 -> 1280x800
+shaders/cs_easu_fp16.spv 800x500 -> 1280x800 : GPU 0.522 ms (médiane, timestamps), soumission complète 0.82 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 800x500 -> 1600x1000 -> 1280x800, 200 répétitions
+  pass_00  none  -> FEAT      0.221 ms
+  pass_01  FEAT  -> A         0.328 ms
+  pass_02  A     -> B         0.326 ms
+  pass_03  B     -> A         0.325 ms
+  pass_04  A     -> B         0.326 ms
+  pass_05  B     -> A         0.251 ms
+  pass_06  A     -> OUT2X     0.355 ms
+  pass_07  none  -> FINAL     1.061 ms
+  total (médianes)                   3.192 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-zoom-r2) 800x500 -> 1280x800, 200 répétitions : 0.978 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r2) 800x500 -> 1280x800, 200 répétitions : 0.876 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r3) 800x500 -> 1280x800, 200 répétitions : 1.044 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-ar-r3) 800x500 -> 1280x800, 200 répétitions : 1.131 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r4) 800x500 -> 1280x800, 200 répétitions : 1.435 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 qualité variante 2, 800x500 -> 1280x800, 200 répétitions
+  153.spv     0.355 ms
+  154.spv     0.381 ms
+  155.spv     0.411 ms
+  146.spv     0.127 ms
+  total       1.275 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 performance variante 2, 800x500 -> 1280x800, 200 répétitions
+  143.spv     0.506 ms
+  146.spv     0.127 ms
+  total       0.633 ms
+
+## 960x600 -> 1280x800
+shaders/cs_easu_fp16.spv 960x600 -> 1280x800 : GPU 0.521 ms (médiane, timestamps), soumission complète 0.79 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 960x600 -> 1920x1200 -> 1280x800, 200 répétitions
+  pass_00  none  -> FEAT      0.315 ms
+  pass_01  FEAT  -> A         0.466 ms
+  pass_02  A     -> B         0.465 ms
+  pass_03  B     -> A         0.465 ms
+  pass_04  A     -> B         0.465 ms
+  pass_05  B     -> A         0.361 ms
+  pass_06  A     -> OUT2X     0.506 ms
+  pass_07  none  -> FINAL     1.059 ms
+  total (médianes)                   4.101 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-zoom-r2) 960x600 -> 1280x800, 200 répétitions : 0.831 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r2) 960x600 -> 1280x800, 200 répétitions : 1.147 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r3) 960x600 -> 1280x800, 200 répétitions : 1.359 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-ar-r3) 960x600 -> 1280x800, 200 répétitions : 1.487 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r4) 960x600 -> 1280x800, 200 répétitions : 1.977 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 qualité variante 2, 960x600 -> 1280x800, 200 répétitions
+  153.spv     0.503 ms
+  154.spv     0.538 ms
+  155.spv     0.591 ms
+  146.spv     0.144 ms
+  total       1.777 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 performance variante 2, 960x600 -> 1280x800, 200 répétitions
+  143.spv     0.732 ms
+  146.spv     0.144 ms
+  total       0.876 ms
+
+## 1024x640 -> 1280x800
+shaders/cs_easu_fp16.spv 1024x640 -> 1280x800 : GPU 0.522 ms (médiane, timestamps), soumission complète 0.86 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1024x640 -> 2048x1280 -> 1280x800, 200 répétitions
+  pass_00  none  -> FEAT      0.357 ms
+  pass_01  FEAT  -> A         0.530 ms
+  pass_02  A     -> B         0.528 ms
+  pass_03  B     -> A         0.528 ms
+  pass_04  A     -> B         0.528 ms
+  pass_05  B     -> A         0.409 ms
+  pass_06  A     -> OUT2X     0.574 ms
+  pass_07  none  -> FINAL     1.059 ms
+  total (médianes)                   4.515 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-zoom-r2) 1024x640 -> 1280x800, 200 répétitions : 0.961 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r2) 1024x640 -> 1280x800, 200 répétitions : 1.258 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r3) 1024x640 -> 1280x800, 200 répétitions : 1.510 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-ar-r3) 1024x640 -> 1280x800, 200 répétitions : 1.648 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), RAVU (ravu-lite-r4) 1024x640 -> 1280x800, 200 répétitions : 2.202 ms (médiane)
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 qualité variante 2, 1024x640 -> 1280x800, 200 répétitions
+  153.spv     0.565 ms
+  154.spv     0.604 ms
+  155.spv     0.665 ms
+  146.spv     0.156 ms
+  total       1.990 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), LS1 performance variante 2, 1024x640 -> 1280x800, 200 répétitions
+  143.spv     0.821 ms
+  146.spv     0.155 ms
+  total       0.976 ms
+
+## RCAS 1280x800 (netteté 2)
+shaders/cs_rcas.spv 1280x800 -> 1280x800 : GPU 0.183 ms (médiane, timestamps), soumission complète 0.55 ms (AMD Custom GPU 0932 (RADV VANGOGH))
