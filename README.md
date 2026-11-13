@@ -99,6 +99,24 @@ Its cost grows with the render resolution, so the choice is about where those ~2
 To get 800x500 or 640x400 in games that do not list them, set Steam's per-game **"Game resolution"** (game
 properties, Steam Deck section): gamescope then presents a display of that size and most games render at it.
 
+### Compared with LS1 (Lossless Scaling's spatial scaler)
+
+Same sweep, LS1 run from the user's own `Lossless.dll` (`scripts/compare_ls1.py`, nothing from Lossless Scaling is
+distributed; raw numbers in `results/compare-ls1-2026-11-13.txt`). LS1 applies its own sharpening (variants 0 to 4);
+FSR 1 and GrossoModo are measured before RCAS. 800x500 -> 1280x800:
+
+| Method | PSNR | detail | shimmer |
+|---|---|---|---|
+| FSR 1 | 35.43 dB | 59 % | 1.534 |
+| **GrossoModo (strength 0.5)** | **35.98 dB** | 70 % | **1.494** |
+| LS1 Quality, sharpness 0 | 35.64 dB | 75 % | 1.571 |
+| LS1 Quality, sharpness 2 | 35.11 dB | 93 % | 1.646 |
+| LS1 Performance, sharpness 0 | 35.45 dB | 73 % | 1.557 |
+
+At every render resolution GrossoModo has the best fidelity and the least shimmer; LS1 shows more detail, much of it
+from sharpening (above 100 % at high sharpness, i.e. over-sharpened), and shimmers more than FSR 1 too. Its GPU cost
+on the Deck is not measured yet.
+
 ## Install on a Steam Deck
 
 Requires SteamOS 3.x (gamescope with `cap_sys_nice`, Vulkan loader 1.4). Have a way back (Desktop Mode or SSH).
