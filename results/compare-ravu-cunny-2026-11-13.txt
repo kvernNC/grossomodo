@@ -1,0 +1,54 @@
+# scripts/compare_ls1.py --ravu build/ravu_zoom_ar_r3,build/ravu_zoom_r3 (RAVU-Zoom RGB converti par gen_ravu_vk.py, llvmpipe)
+5 captures, panoramique de 6 images, vers 1280x800 ; FSR1/GM avant RCAS, LS1 avec sa netteté
+      rendu          méthode     PSNR  détail  scint.
+   640x400              FSR1  33.95dB   46.4%   1.647
+   640x400             GM0.5  34.47dB   57.1%   1.610
+   640x400   ravu_zoom_ar_r3  34.61dB   55.6%   1.571
+   640x400      ravu_zoom_r3  34.58dB   61.5%   1.614
+
+   720x450              FSR1  34.61dB   53.3%   1.604
+   720x450             GM0.5  35.11dB   63.1%   1.570
+   720x450   ravu_zoom_ar_r3  35.28dB   62.1%   1.521
+   720x450      ravu_zoom_r3  35.26dB   69.4%   1.565
+
+   800x500              FSR1  35.43dB   59.4%   1.534
+   800x500             GM0.5  35.98dB   69.8%   1.494
+   800x500   ravu_zoom_ar_r3  36.16dB   68.8%   1.443
+   800x500      ravu_zoom_r3  36.12dB   76.8%   1.487
+
+   854x534              FSR1  35.83dB   63.4%   1.497
+   854x534             GM0.5  36.35dB   74.2%   1.456
+   854x534   ravu_zoom_ar_r3  36.53dB   73.3%   1.404
+   854x534      ravu_zoom_r3  36.44dB   82.0%   1.452
+
+   960x600              FSR1  37.08dB   70.6%   1.392
+   960x600             GM0.5  37.67dB   81.5%   1.347
+   960x600   ravu_zoom_ar_r3  37.89dB   81.1%   1.288
+   960x600      ravu_zoom_r3  37.72dB   90.9%   1.347
+
+  1024x640              FSR1  37.44dB   74.3%   1.344
+  1024x640             GM0.5  37.99dB   85.4%   1.302
+  1024x640   ravu_zoom_ar_r3  38.22dB   85.0%   1.240
+  1024x640      ravu_zoom_r3  37.96dB   94.8%   1.308
+
+
+# scripts/compare_mpv.py (shaders mpv via ffmpeg + libplacebo, luma)
+5 captures, panoramique de 6 images, vers 1280x800 (libplacebo, avant RCAS)
+   640x400          (aucun: EWA Lanczos)  33.84dB   43.6%   1.658
+   640x400       FSRCNNX_x2_8-0-4-1.glsl  34.36dB   71.3%   1.622
+   640x400      CuNNy-veryfast-SOFT.glsl  34.30dB   54.8%   1.607
+   640x400        CuNNy-faster-SOFT.glsl  34.29dB   56.5%   1.608
+   640x400          CuNNy-fast-SOFT.glsl  34.36dB   56.9%   1.597
+   640x400          CuNNy-faster-DS.glsl  34.15dB   64.1%   1.651
+   640x400          ravu-zoom-ar-r3.hook  34.42dB   55.8%   1.579
+   640x400          ravu-lite-ar-r4.hook  34.45dB   61.5%   1.570
+
+   800x500          (aucun: EWA Lanczos)  35.38dB   58.3%   1.534
+   800x500       FSRCNNX_x2_8-0-4-1.glsl  35.83dB   80.9%   1.502
+   800x500      CuNNy-veryfast-SOFT.glsl  35.71dB   63.8%   1.489
+   800x500        CuNNy-faster-SOFT.glsl  35.70dB   64.3%   1.488
+   800x500          CuNNy-fast-SOFT.glsl  35.75dB   65.0%   1.482
+   800x500          CuNNy-faster-DS.glsl  35.57dB   71.3%   1.528
+   800x500          ravu-zoom-ar-r3.hook  35.94dB   69.2%   1.452
+   800x500          ravu-lite-ar-r4.hook  35.89dB   69.7%   1.459
+
