@@ -696,9 +696,19 @@ struct App {
             std::snprintf(lines[2], 81, "A/X: methode D/G  Y: partage  Haut/Bas: rendu  L1/R1: nettete");
             std::snprintf(lines[3], 81, "B: pause  Vue: AA  Menu: image  R3: loupe  L3: aide");
         }
+        // La police n'a que l'ASCII : lettres accentuées UTF-8 (U+00C0-U+00FF) ramenées à leur lettre de base.
+        static const char latin[] = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
         uint32_t *t = static_cast<uint32_t *>(textBuf.map);
-        for (int l = 0; l < 4; ++l)
-            for (int c = 0; c < 80; ++c) t[l * 80 + c] = uint8_t(lines[l][c]);
+        for (int l = 0; l < 4; ++l) {
+            int c = 0;
+            for (const unsigned char *q = reinterpret_cast<const unsigned char *>(lines[l]); *q && c < 80; ++q) {
+                unsigned char ch = *q;
+                if (ch == 0xC3 && q[1] >= 0x80 && q[1] <= 0xBF) ch = uint8_t(latin[(*++q) - 0x80]);
+                else if (ch >= 0x80) { while ((q[1] & 0xC0) == 0x80) ++q; ch = '?'; }
+                t[l * 80 + c++] = ch;
+            }
+            for (; c < 80; ++c) t[l * 80 + c] = 0;
+        }
     }
 
     // Enregistre une image complète dans finalImg. Renvoie après soumission (fence signalée à la fin).
