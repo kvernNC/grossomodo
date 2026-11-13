@@ -1,0 +1,4 @@
+build/
+data/
+__pycache__/
+layer/fsrcnnx8_spv.h

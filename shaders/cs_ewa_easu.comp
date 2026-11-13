@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// EWA Lanczos « sharp » (noyau jinc fenêtré par jinc, support circulaire), réécrit à partir des mathématiques du
+// filtre. Paramètres repris de libplacebo `ewa_lanczossharp` (le filtre d'agrandissement haut de gamme de mpv) :
+// rayon = premier zéro de jinc n° 3 (3,2383154841662362), flou 0,9812505644269356, anti-ringing 0,8.
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "easu_interface.h"
+
+const float PI = 3.14159265358979323846;
+const float RADIUS = 3.2383154841662362;
+const float BLUR = 0.9812505644269356;
+const float JINC_ZERO1 = 1.2196698912665045;
+const float ANTIRING = 0.8;
+
+// Bessel J1, approximation d'Abramowitz et Stegun (9.4.4 et 9.4.6).
+float besselJ1(float x)
+{
+    float ax = abs(x);
+    if (ax < 3.0) {
+        float y = (x / 3.0) * (x / 3.0);
+        return x * (0.5 + y * (-0.56249985 + y * (0.21093573 + y * (-0.03954289 + y * (0.00443319
+                 + y * (-0.00031761 + y * 0.00001109))))));
+    }
+    float y = 3.0 / ax;
+    float f1 = 0.79788456 + y * (0.00000156 + y * (0.01659667 + y * (0.00017105 + y * (-0.00249511
+             + y * (0.00113653 + y * -0.00020033)))));
+    float t1 = ax - 2.35619449 + y * (0.12499612 + y * (0.00005650 + y * (-0.00637879 + y * (0.00074348
+             + y * (0.00079824 + y * -0.00029166)))));
+    float j = f1 * cos(t1) / sqrt(ax);
+    return x < 0.0 ? -j : j;
+}
+
+float jinc(float x)
+{
+    float t = PI * x;
+    return abs(t) < 1e-6 ? 1.0 : 2.0 * besselJ1(t) / t;
+}
+
+float ewaWeight(float d)
+{
+    if (d >= RADIUS) return 0.0;
+    return jinc(d / BLUR) * jinc(d / RADIUS * JINC_ZERO1);
+}
+
+vec3 upscale(ivec2 pos, vec2 srcSize, vec2 dstSize)
+{
+    vec2 p = (vec2(pos) + 0.5) * srcSize / dstSize - 0.5;
+    ivec2 b = ivec2(floor(p));
+    ivec2 maxc = ivec2(srcSize) - 1;
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    vec3 lo = vec3(1e9), hi = vec3(-1e9);
+    for (int j = -2; j <= 3; ++j) {
+        for (int i = -2; i <= 3; ++i) {
+            vec2 d = vec2(b + ivec2(i, j)) - p;
+            float r = length(d);
+            float w = ewaWeight(r);
+            if (w == 0.0) continue;
+            vec3 s = texelFetch(s_samplers[0], clamp(b + ivec2(i, j), ivec2(0), maxc), 0).rgb;
+            sum += s * w;
+            wsum += w;
+            if ((i == 0 || i == 1) && (j == 0 || j == 1)) { lo = min(lo, s); hi = max(hi, s); }
+        }
+    }
+    vec3 c = sum / wsum;
+    return mix(c, clamp(c, lo, hi), ANTIRING);
+}

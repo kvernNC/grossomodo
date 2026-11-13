@@ -1,0 +1,17 @@
+{
+  "file_format_version": "1.0.0",
+  "settings_array": [
+    {
+      "app_keys": ["/usr/bin/gamescope"],
+      "layers": [
+        {
+          "control": "on",
+          "name": "VK_LAYER_GROSSOMODO_upscale",
+          "path": "/etc/grossomodo/VkLayer_GROSSOMODO_upscale.json",
+          "treat_as_implicit_manifest": true
+        },
+        { "control": "unordered_layer_location" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+//
+// MAKO Scaler à la place de la passe EASU (FSR 1) de gamescope.
+//
+// Le calcul de reconstruction (cubique renforcée, limitation locale, anti-ringing) est repris de
+// MAKO Renderer, engine/mako-render/src/shaders/spatial_scaling.comp
+// (https://github.com/eugeniosegala/MAKO, GPL-3.0-or-later, (C) Eugenio Segala et contributeurs).
+// L'interface (liaisons, constantes, taille des groupes, sortie scRGB) est celle de cs_easu.comp de gamescope,
+// pour que ce shader puisse prendre la place d'EASU dans le pipeline que gamescope a créé.
+//
+// Pas de netteté ici : le RCAS de gamescope passe derrière, réglé par le curseur « FSR Sharpness ».
+
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+#include "descriptor_set.h"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Même bloc que cs_easu.comp : les quatre constantes de FsrEasuCon, puis la matrice de couleur.
+layout(binding = 0, scalar)
+uniform layers_t {
+    uvec4 c1, c2, c3, c4;
+    mat3x4 u_ctm;
+};
+
+const float u_linearToNits = 0.0f;
+const float u_nitsToLinear = 0.0f;
+
+#include "colorimetry.h"
+
+// FsrEasuCon : con0.xy = taille d'entrée / taille de sortie, con1.xy = 1 / taille d'entrée.
+vec2 inputSize()  { return vec2(1.0) / uintBitsToFloat(c2.xy); }
+vec2 outputSize() { return floor(inputSize() / uintBitsToFloat(c1.xy) + vec2(0.5)); }
+
+// Même sortie que cs_easu.comp : le scRGB est converti en PQ pour RCAS.
+vec3 easuOutput(vec3 color)
+{
+    if (get_layer_colorspace(0) != colorspace_scRGB)
+        return color;
+
+    return scRGBEncodingToPQ((vec4(color, 1.0f) * u_ctm).rgb);
+}
+
+float luma(vec3 color)
+{
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+vec4 sourceTexel(ivec2 coordinate)
+{
+    return texelFetch(s_samplers[0], coordinate, 0);
+}
+
+vec4 filteredSource(vec2 coordinate)
+{
+    return textureLod(s_samplers[0], coordinate, 0.0);
+}
+
+vec4 sharpenedCubicWeights(float fraction)
+{
+    float f2 = fraction * fraction;
+    float f3 = f2 * fraction;
+    const float reconstructionTension = 0.8;
+    return vec4(
+        reconstructionTension * (-fraction + 2.0 * f2 - f3),
+        1.0 + (reconstructionTension - 3.0) * f2 + (2.0 - reconstructionTension) * f3,
+        reconstructionTension * fraction + (3.0 - 2.0 * reconstructionTension) * f2 + (reconstructionTension - 2.0) * f3,
+        reconstructionTension * (-f2 + f3)
+    );
+}
+
+vec3 makoReconstruct(ivec2 outputCoordinate, vec2 srcSize, vec2 dstSize)
+{
+    vec2 sourcePosition = (vec2(outputCoordinate) + vec2(0.5)) * srcSize / dstSize - vec2(0.5);
+    ivec2 sourceBase = ivec2(floor(sourcePosition));
+    vec2 fraction = fract(sourcePosition);
+    vec4 horizontalWeights = sharpenedCubicWeights(fraction.x);
+    vec4 verticalWeights = sharpenedCubicWeights(fraction.y);
+
+    // Les deux lobes intérieurs positifs sont regroupés en un seul échantillon filtré : 9 lectures pour un 4x4.
+    vec3 hw = vec3(horizontalWeights.x, horizontalWeights.y + horizontalWeights.z, horizontalWeights.w);
+    vec3 vw = vec3(verticalWeights.x, verticalWeights.y + verticalWeights.z, verticalWeights.w);
+    vec2 inv = vec2(1.0) / srcSize;
+    vec3 hx = (vec3(float(sourceBase.x - 1), float(sourceBase.x) + horizontalWeights.z / hw.y,
+                    float(sourceBase.x + 2)) + vec3(0.5)) * inv.x;
+    vec3 vy = (vec3(float(sourceBase.y - 1), float(sourceBase.y) + verticalWeights.z / vw.y,
+                    float(sourceBase.y + 2)) + vec3(0.5)) * inv.y;
+
+    vec4 reconstructed =
+        filteredSource(vec2(hx.x, vy.x)) * (hw.x * vw.x) +
+        filteredSource(vec2(hx.y, vy.x)) * (hw.y * vw.x) +
+        filteredSource(vec2(hx.z, vy.x)) * (hw.z * vw.x) +
+        filteredSource(vec2(hx.x, vy.y)) * (hw.x * vw.y) +
+        filteredSource(vec2(hx.y, vy.y)) * (hw.y * vw.y) +
+        filteredSource(vec2(hx.z, vy.y)) * (hw.z * vw.y) +
+        filteredSource(vec2(hx.x, vy.z)) * (hw.x * vw.z) +
+        filteredSource(vec2(hx.y, vy.z)) * (hw.y * vw.z) +
+        filteredSource(vec2(hx.z, vy.z)) * (hw.z * vw.z);
+
+    ivec2 maxCoord = ivec2(srcSize) - ivec2(1);
+    int x0 = clamp(sourceBase.x, 0, maxCoord.x);
+    int x1 = clamp(sourceBase.x + 1, 0, maxCoord.x);
+    int y0 = clamp(sourceBase.y, 0, maxCoord.y);
+    int y1 = clamp(sourceBase.y + 1, 0, maxCoord.y);
+    vec4 c00 = sourceTexel(ivec2(x0, y0));
+    vec4 c10 = sourceTexel(ivec2(x1, y0));
+    vec4 c01 = sourceTexel(ivec2(x0, y1));
+    vec4 c11 = sourceTexel(ivec2(x1, y1));
+    vec4 bilinear = mix(mix(c00, c10, fraction.x), mix(c01, c11, fraction.x), fraction.y);
+    vec4 localMinimum = min(min(c00, c10), min(c01, c11));
+    vec4 localMaximum = max(max(c00, c10), max(c01, c11));
+    reconstructed = clamp(reconstructed, localMinimum, localMaximum);
+
+    float minimumLuma = min(min(luma(c00.rgb), luma(c10.rgb)), min(luma(c01.rgb), luma(c11.rgb)));
+    float maximumLuma = max(max(luma(c00.rgb), luma(c10.rgb)), max(luma(c01.rgb), luma(c11.rgb)));
+    float ringingRisk = smoothstep(0.06, 0.30, maximumLuma - minimumLuma);
+
+    // Netteté de MAKO à 0 (tuning.x = 0) : il ne reste que la reconstruction anti-ringing.
+    return mix(reconstructed.rgb, bilinear.rgb, ringingRisk * 0.22);
+}
+
+void makoPass(uvec2 pos, vec2 srcSize, vec2 dstSize)
+{
+    if (any(greaterThanEqual(pos, uvec2(dstSize))))
+        return;
+    vec3 color = makoReconstruct(ivec2(pos), srcSize, dstSize);
+    imageStore(dst, ivec2(pos), vec4(easuOutput(color), 1));
+}
+
+void main()
+{
+    // Même découpage que cs_easu.comp : 64 invocations, 4 pixels chacune, 16x16 pixels par groupe.
+    vec2 srcSize = inputSize();
+    vec2 dstSize = outputSize();
+    uvec2 local = uvec2(gl_LocalInvocationID.x & 7u, gl_LocalInvocationID.x >> 3u);
+    uvec2 pos = local + uvec2(gl_WorkGroupID.x << 4u, gl_WorkGroupID.y << 4u);
+    makoPass(pos, srcSize, dstSize);
+    pos.x += 8u;
+    makoPass(pos, srcSize, dstSize);
+    pos.y += 8u;
+    makoPass(pos, srcSize, dstSize);
+    pos.x -= 8u;
+    makoPass(pos, srcSize, dstSize);
+}

@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// RCAS (FidelityFX, ffx_fsr1.h) appliqué comme dans cs_composite_rcas.comp de gamescope, sans la composition des
+// autres calques : même fonction FsrRcasF, même lecture (texelFetch du calque 0, entrée « déjà sRGB »), même
+// constante u_c1 = FsrRcasCon(sharpness)[0], avec sharpness = nUpscaleSharpness / 10 (0 = netteté maximale).
+// Sert au banc de test, pour comparer les images finales (agrandisseur + RCAS).
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#include "descriptor_set.h"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(binding = 0, scalar)
+uniform layers_t {
+    uint u_c1;
+};
+
+#define A_GPU 1
+#define A_GLSL 1
+#include "ffx_a.h"
+#define FSR_RCAS_F 1
+vec4 FsrRcasLoadF(ivec2 p) { return texelFetch(s_samplers[0], ivec2(p), 0); }
+void FsrRcasInputF(inout float r, inout float g, inout float b) {}
+#include "ffx_fsr1.h"
+
+void rcasPass(uvec2 pos)
+{
+    uvec2 extent = uvec2(textureSize(s_samplers[0], 0));
+    if (any(greaterThanEqual(pos, extent)))
+        return;
+    vec3 c;
+    FsrRcasF(c.r, c.g, c.b, pos, uvec4(u_c1));
+    imageStore(dst, ivec2(pos), vec4(c, 1));
+}
+
+void main()
+{
+    uvec2 pos = uvec2(gl_LocalInvocationID.x & 7u, gl_LocalInvocationID.x >> 3u)
+              + uvec2(gl_WorkGroupID.x << 4u, gl_WorkGroupID.y << 4u);
+    rcasPass(pos);
+    pos.x += 8u;
+    rcasPass(pos);
+    pos.y += 8u;
+    rcasPass(pos);
+    pos.x -= 8u;
+    rcasPass(pos);
+}

@@ -1,0 +1,80 @@
+== 2026-11-13T12:55:02+11:00 7.2.7-valve2-2-neptune-72-g31504582a073
+PRETTY_NAME="SteamOS"
+
+## 1152x648 -> 1280x720
+shaders/cs_easu.spv 1152x648 -> 1280x720 : GPU 0.685 ms (médiane, timestamps), soumission complète 0.96 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_easu_fp16.spv 1152x648 -> 1280x720 : GPU 0.472 ms (médiane, timestamps), soumission complète 0.78 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_lanczos3_easu.spv 1152x648 -> 1280x720 : GPU 0.914 ms (médiane, timestamps), soumission complète 1.17 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP32, 1152x648 -> 2304x1296 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.367 ms
+  pass_01  FEAT  -> A         0.747 ms
+  pass_02  A     -> B         0.743 ms
+  pass_03  B     -> A         0.743 ms
+  pass_04  A     -> B         0.743 ms
+  pass_05  B     -> A         0.477 ms
+  pass_06  A     -> OUT2X     0.539 ms
+  pass_07  none  -> FINAL     1.896 ms
+  total (médianes)                   6.255 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1152x648 -> 2304x1296 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.356 ms
+  pass_01  FEAT  -> A         0.529 ms
+  pass_02  A     -> B         0.528 ms
+  pass_03  B     -> A         0.527 ms
+  pass_04  A     -> B         0.528 ms
+  pass_05  B     -> A         0.437 ms
+  pass_06  A     -> OUT2X     0.574 ms
+  pass_07  none  -> FINAL     2.559 ms
+  total (médianes)                   6.038 ms
+
+## 1024x576 -> 1280x720
+shaders/cs_easu.spv 1024x576 -> 1280x720 : GPU 0.685 ms (médiane, timestamps), soumission complète 0.95 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_easu_fp16.spv 1024x576 -> 1280x720 : GPU 0.471 ms (médiane, timestamps), soumission complète 0.77 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_lanczos3_easu.spv 1024x576 -> 1280x720 : GPU 0.916 ms (médiane, timestamps), soumission complète 1.24 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP32, 1024x576 -> 2048x1152 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.362 ms
+  pass_01  FEAT  -> A         0.771 ms
+  pass_02  A     -> B         0.769 ms
+  pass_03  B     -> A         0.769 ms
+  pass_04  A     -> B         0.769 ms
+  pass_05  B     -> A         0.396 ms
+  pass_06  A     -> OUT2X     0.500 ms
+  pass_07  none  -> FINAL     2.085 ms
+  total (médianes)                   6.420 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1024x576 -> 2048x1152 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.315 ms
+  pass_01  FEAT  -> A         0.478 ms
+  pass_02  A     -> B         0.476 ms
+  pass_03  B     -> A         0.476 ms
+  pass_04  A     -> B         0.476 ms
+  pass_05  B     -> A         0.345 ms
+  pass_06  A     -> OUT2X     0.518 ms
+  pass_07  none  -> FINAL     2.492 ms
+  total (médianes)                   5.576 ms
+
+## 800x450 -> 1280x720
+shaders/cs_easu.spv 800x450 -> 1280x720 : GPU 0.686 ms (médiane, timestamps), soumission complète 0.95 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_easu_fp16.spv 800x450 -> 1280x720 : GPU 0.471 ms (médiane, timestamps), soumission complète 0.72 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_lanczos3_easu.spv 800x450 -> 1280x720 : GPU 0.917 ms (médiane, timestamps), soumission complète 1.17 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP32, 800x450 -> 1600x900 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.263 ms
+  pass_01  FEAT  -> A         0.566 ms
+  pass_02  A     -> B         0.564 ms
+  pass_03  B     -> A         0.564 ms
+  pass_04  A     -> B         0.564 ms
+  pass_05  B     -> A         0.243 ms
+  pass_06  A     -> OUT2X     0.355 ms
+  pass_07  none  -> FINAL     1.429 ms
+  total (médianes)                   4.547 ms
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 800x450 -> 1600x900 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.199 ms
+  pass_01  FEAT  -> A         0.297 ms
+  pass_02  A     -> B         0.296 ms
+  pass_03  B     -> A         0.295 ms
+  pass_04  A     -> B         0.296 ms
+  pass_05  B     -> A         0.223 ms
+  pass_06  A     -> OUT2X     0.322 ms
+  pass_07  none  -> FINAL     1.431 ms
+  total (médianes)                   3.359 ms
+
+## RCAS 1280x720 (netteté 2)
+shaders/cs_rcas.spv 1280x720 -> 1280x720 : GPU 0.161 ms (médiane, timestamps), soumission complète 0.46 ms (AMD Custom GPU 0932 (RADV VANGOGH))

@@ -1,0 +1,119 @@
+== 2026-11-13T13:13:06+11:00 7.2.7-valve2-2-neptune-72-g31504582a073
+PRETTY_NAME="SteamOS"
+
+## 1152x648 -> 1280x720
+shaders/cs_easu.spv 1152x648 -> 1280x720 : GPU 0.685 ms (médiane, timestamps), soumission complète 0.95 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_easu_fp16.spv 1152x648 -> 1280x720 : GPU 0.471 ms (médiane, timestamps), soumission complète 0.78 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_lanczos3_easu.spv 1152x648 -> 1280x720 : GPU 0.917 ms (médiane, timestamps), soumission complète 1.21 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+# FSRCNNX 8, réduction cubic
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1152x648 -> 2304x1296 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.368 ms
+  pass_01  FEAT  -> A         0.538 ms
+  pass_02  A     -> B         0.537 ms
+  pass_03  B     -> A         0.536 ms
+  pass_04  A     -> B         0.538 ms
+  pass_05  B     -> A         0.448 ms
+  pass_06  A     -> OUT2X     0.585 ms
+  pass_07  none  -> FINAL     2.590 ms
+  total (médianes)                   6.141 ms
+# FSRCNNX 8, réduction cr9
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1152x648 -> 2304x1296 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.402 ms
+  pass_01  FEAT  -> A         0.606 ms
+  pass_02  A     -> B         0.603 ms
+  pass_03  B     -> A         0.603 ms
+  pass_04  A     -> B         0.603 ms
+  pass_05  B     -> A         0.446 ms
+  pass_06  A     -> OUT2X     0.658 ms
+  pass_07  none  -> FINAL     0.312 ms
+  total (médianes)                   4.232 ms
+# FSRCNNX 8, réduction bilinear
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1152x648 -> 2304x1296 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.402 ms
+  pass_01  FEAT  -> A         0.605 ms
+  pass_02  A     -> B         0.603 ms
+  pass_03  B     -> A         0.603 ms
+  pass_04  A     -> B         0.603 ms
+  pass_05  B     -> A         0.446 ms
+  pass_06  A     -> OUT2X     0.657 ms
+  pass_07  none  -> FINAL     0.204 ms
+  total (médianes)                   4.122 ms
+
+## 1024x576 -> 1280x720
+shaders/cs_easu.spv 1024x576 -> 1280x720 : GPU 0.687 ms (médiane, timestamps), soumission complète 0.99 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_easu_fp16.spv 1024x576 -> 1280x720 : GPU 0.471 ms (médiane, timestamps), soumission complète 0.77 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_lanczos3_easu.spv 1024x576 -> 1280x720 : GPU 0.917 ms (médiane, timestamps), soumission complète 1.22 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+# FSRCNNX 8, réduction cubic
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1024x576 -> 2048x1152 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.315 ms
+  pass_01  FEAT  -> A         0.478 ms
+  pass_02  A     -> B         0.476 ms
+  pass_03  B     -> A         0.476 ms
+  pass_04  A     -> B         0.476 ms
+  pass_05  B     -> A         0.340 ms
+  pass_06  A     -> OUT2X     0.518 ms
+  pass_07  none  -> FINAL     2.495 ms
+  total (médianes)                   5.574 ms
+# FSRCNNX 8, réduction cr9
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1024x576 -> 2048x1152 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.320 ms
+  pass_01  FEAT  -> A         0.480 ms
+  pass_02  A     -> B         0.477 ms
+  pass_03  B     -> A         0.477 ms
+  pass_04  A     -> B         0.477 ms
+  pass_05  B     -> A         0.342 ms
+  pass_06  A     -> OUT2X     0.521 ms
+  pass_07  none  -> FINAL     0.296 ms
+  total (médianes)                   3.390 ms
+# FSRCNNX 8, réduction bilinear
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 1024x576 -> 2048x1152 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.319 ms
+  pass_01  FEAT  -> A         0.481 ms
+  pass_02  A     -> B         0.478 ms
+  pass_03  B     -> A         0.478 ms
+  pass_04  A     -> B         0.478 ms
+  pass_05  B     -> A         0.340 ms
+  pass_06  A     -> OUT2X     0.522 ms
+  pass_07  none  -> FINAL     0.168 ms
+  total (médianes)                   3.264 ms
+
+## 800x450 -> 1280x720
+shaders/cs_easu.spv 800x450 -> 1280x720 : GPU 0.686 ms (médiane, timestamps), soumission complète 0.93 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_easu_fp16.spv 800x450 -> 1280x720 : GPU 0.471 ms (médiane, timestamps), soumission complète 0.74 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+shaders/cs_lanczos3_easu.spv 800x450 -> 1280x720 : GPU 0.916 ms (médiane, timestamps), soumission complète 1.16 ms (AMD Custom GPU 0932 (RADV VANGOGH))
+# FSRCNNX 8, réduction cubic
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 800x450 -> 1600x900 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.199 ms
+  pass_01  FEAT  -> A         0.297 ms
+  pass_02  A     -> B         0.295 ms
+  pass_03  B     -> A         0.295 ms
+  pass_04  A     -> B         0.295 ms
+  pass_05  B     -> A         0.211 ms
+  pass_06  A     -> OUT2X     0.322 ms
+  pass_07  none  -> FINAL     1.433 ms
+  total (médianes)                   3.349 ms
+# FSRCNNX 8, réduction cr9
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 800x450 -> 1600x900 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.200 ms
+  pass_01  FEAT  -> A         0.298 ms
+  pass_02  A     -> B         0.296 ms
+  pass_03  B     -> A         0.296 ms
+  pass_04  A     -> B         0.296 ms
+  pass_05  B     -> A         0.211 ms
+  pass_06  A     -> OUT2X     0.322 ms
+  pass_07  none  -> FINAL     0.289 ms
+  total (médianes)                   2.208 ms
+# FSRCNNX 8, réduction bilinear
+GPU : AMD Custom GPU 0932 (RADV VANGOGH), FP16, 800x450 -> 1600x900 -> 1280x720, 200 répétitions
+  pass_00  none  -> FEAT      0.200 ms
+  pass_01  FEAT  -> A         0.298 ms
+  pass_02  A     -> B         0.297 ms
+  pass_03  B     -> A         0.296 ms
+  pass_04  A     -> B         0.297 ms
+  pass_05  B     -> A         0.211 ms
+  pass_06  A     -> OUT2X     0.323 ms
+  pass_07  none  -> FINAL     0.126 ms
+  total (médianes)                   2.047 ms
+
+## RCAS 1280x720 (netteté 2)
+shaders/cs_rcas.spv 1280x720 -> 1280x720 : GPU 0.155 ms (médiane, timestamps), soumission complète 0.45 ms (AMD Custom GPU 0932 (RADV VANGOGH))

@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SGSR 1 (Qualcomm, BSD-3-Clause, third_party/gamescope/sgsr1.h) branché sur l'interface d'EASU, pour le comparer
+// dans le même banc. Dans gamescope, SGSR a sa propre passe ; ce fichier ne sert qu'aux mesures.
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "easu_interface.h"
+#include "sgsr1.h"
+
+vec3 upscale(ivec2 pos, vec2 srcSize, vec2 dstSize)
+{
+    return sampleSgsr1(s_samplers[0], (vec2(pos) + 0.5) / dstSize).rgb;
+}

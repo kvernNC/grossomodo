@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Lanczos-3 en 2D (6x6 lectures, poids séparables), avec anti-ringing : le résultat est ramené vers l'intervalle des
+// 4 pixels sources les plus proches (mélange 0,8, comme l'anti-ringing de libplacebo).
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "easu_interface.h"
+
+const float PI = 3.14159265358979323846;
+
+float lanczos3(float x)
+{
+    x = abs(x);
+    if (x < 1e-5) return 1.0;
+    if (x >= 3.0) return 0.0;
+    float px = PI * x;
+    return 3.0 * sin(px) * sin(px / 3.0) / (px * px);
+}
+
+vec3 upscale(ivec2 pos, vec2 srcSize, vec2 dstSize)
+{
+    vec2 p = (vec2(pos) + 0.5) * srcSize / dstSize - 0.5;
+    ivec2 b = ivec2(floor(p));
+    vec2 f = p - vec2(b);
+    float wx[6], wy[6];
+    for (int i = 0; i < 6; ++i) {
+        wx[i] = lanczos3(f.x - float(i - 2));
+        wy[i] = lanczos3(f.y - float(i - 2));
+    }
+    ivec2 maxc = ivec2(srcSize) - 1;
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    vec3 lo = vec3(1e9), hi = vec3(-1e9);
+    for (int j = 0; j < 6; ++j) {
+        for (int i = 0; i < 6; ++i) {
+            vec3 s = texelFetch(s_samplers[0], clamp(b + ivec2(i - 2, j - 2), ivec2(0), maxc), 0).rgb;
+            float w = wx[i] * wy[j];
+            sum += s * w;
+            wsum += w;
+            if ((i == 2 || i == 3) && (j == 2 || j == 3)) { lo = min(lo, s); hi = max(hi, s); }
+        }
+    }
+    vec3 c = sum / wsum;
+    return mix(c, clamp(c, lo, hi), 0.8);
+}
