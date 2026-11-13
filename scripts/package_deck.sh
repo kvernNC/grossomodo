@@ -16,6 +16,10 @@ rm -f "$OUT"/fsrcnnx8/*.comp
 # libstdc++ et libgcc liées en statique : seuls la glibc et libvulkan.so.1 du système sont nécessaires.
 g++ -O2 -std=c++17 -static-libstdc++ -static-libgcc harness/harness.cpp -lvulkan -o "$OUT/harness"
 g++ -O2 -std=c++17 -static-libstdc++ -static-libgcc harness/fsrcnnx_vk.cpp -lvulkan -o "$OUT/fsrcnnx_vk"
+# Comparaison LS1 : rien de Lossless Scaling dans l'archive, run.sh lit le Lossless.dll installé par Steam.
+g++ -O2 -std=c++17 -static-libstdc++ -static-libgcc harness/ls1_vk.cpp -lvulkan -o "$OUT/ls1_vk"
+gcc -O2 -std=c11 -D_POSIX_C_SOURCE=200809L -I/usr/include/vkd3d harness/ls1_translate.c -ldl -o "$OUT/ls1_translate"
+cp scripts/ls1_extract.py "$OUT/"
 
 python3 -I - "$OUT" <<'PY'
 import sys; sys.path.insert(0, "scripts")
@@ -34,10 +38,32 @@ R=rapport.txt
 {
   echo "== $(date -Iseconds) $(uname -r)"
   grep -m1 -E "^PRETTY_NAME" /etc/os-release || true
+  # LS1 : DLL lu là où Steam l'installe, traduit par le libvkd3d-shader du Steam Linux Runtime, dans un dossier temporaire.
+  LS1=""
+  DLL="${LS1_DLL:-$HOME/.steam/steam/steamapps/common/Lossless Scaling/Lossless.dll}"
+  if [ -f "$DLL" ]; then
+    LS1=$(mktemp -d); trap 'rm -rf "$LS1"' EXIT
+    ok=""
+    for lib in ${VKD3D_SHADER_LIB:-} "$HOME"/.steam/steam/steamapps/common/SteamLinuxRuntime*/*/files/lib/x86_64-linux-gnu/libvkd3d-shader.so.1* \
+               "$HOME"/.steam/steam/steamapps/common/SteamLinuxRuntime*/*/usr/lib/x86_64-linux-gnu/libvkd3d-shader.so.1* \
+               /usr/lib/libvkd3d-shader.so.1 /usr/lib/x86_64-linux-gnu/libvkd3d-shader.so.1; do
+      [ -f "$lib" ] || continue
+      if VKD3D_SHADER_LIB="$lib" python3 -I ls1_extract.py --dll "$DLL" --out "$LS1" --translate ./ls1_translate >/dev/null 2>&1; then
+        echo "LS1 : $(sha256sum "$DLL" | cut -c1-16), traduit avec $lib"; ok=1; break
+      fi
+    done
+    [ -n "$ok" ] || { echo "LS1 : aucun libvkd3d-shader récent trouvé, LS1 ignoré"; LS1=""; }
+  else
+    echo "LS1 : $DLL absent, LS1 ignoré"
+  fi
   for src in 640x400 720x450 800x500 960x600 1024x640; do
     echo; echo "## $src -> 1280x800"
     ./harness shaders/cs_easu_fp16.spv in_$src.rgba /tmp/out.rgba 1280 800 200
     ./fsrcnnx_vk fsrcnnx8 in_$src.rgba /tmp/out.rgba 1280 800 200 fp16 strength=0.5
+    if [ -n "$LS1" ]; then
+      ./ls1_vk "$LS1" quality 2 in_$src.rgba /tmp/out.rgba 1280 800 200
+      ./ls1_vk "$LS1" performance 2 in_$src.rgba /tmp/out.rgba 1280 800 200
+    fi
   done
   echo; echo "## RCAS 1280x800 (netteté 2)"
   ./harness shaders/cs_rcas.spv in_1280x800.rgba /tmp/out.rgba 1280 800 200 rcas=0.2
