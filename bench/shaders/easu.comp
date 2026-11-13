@@ -1,0 +1,28 @@
+#version 450
+// SPDX-License-Identifier: GPL-3.0-or-later
+#extension GL_GOOGLE_include_directive : require
+// FSR 1 EASU (AMD FidelityFX, MIT, third_party/gamescope/ffx_fsr1.h), comme dans gamescope : 4 pixels par invocation.
+layout(local_size_x = 64) in;
+layout(binding = 0) uniform sampler2D src;
+layout(binding = 1, rgba8) uniform writeonly image2D dst;
+layout(push_constant) uniform PC { uvec4 c1, c2, c3, c4; };
+#define A_GPU 1
+#define A_GLSL 1
+#include "ffx_a.h"
+#define FSR_EASU_F 1
+AF4 FsrEasuRF(AF2 p) { return AF4(textureGather(src, p, 0)); }
+AF4 FsrEasuGF(AF2 p) { return AF4(textureGather(src, p, 1)); }
+AF4 FsrEasuBF(AF2 p) { return AF4(textureGather(src, p, 2)); }
+#include "ffx_fsr1.h"
+void pass(uvec2 pos)
+{
+    if (any(greaterThanEqual(pos, uvec2(imageSize(dst))))) return;
+    vec3 c;
+    FsrEasuF(c, pos, c1, c2, c3, c4);
+    imageStore(dst, ivec2(pos), vec4(c, 1.0));
+}
+void main()
+{
+    uvec2 pos = ARmp8x8(gl_LocalInvocationID.x) + uvec2(gl_WorkGroupID.x << 4u, gl_WorkGroupID.y << 4u);
+    pass(pos); pos.x += 8u; pass(pos); pos.y += 8u; pass(pos); pos.x -= 8u; pass(pos);
+}

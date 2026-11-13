@@ -1,0 +1,25 @@
+#version 450
+// SPDX-License-Identifier: GPL-3.0-or-later
+// « Rendu » d'une scène : une fenêtre de l'image source, à la résolution de rendu. aa=1 : 4x4 échantillons par pixel
+// (image propre, comme un jeu avec anti-crénelage) ; aa=0 : un échantillon au centre du pixel (crénelé, pire cas).
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(binding = 0) uniform sampler2D src;
+layout(binding = 1, rgba8) uniform writeonly image2D dst;
+layout(push_constant) uniform PC { vec4 rect; ivec2 size; int aa; int pad; };
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p, size))) return;
+    vec2 px = rect.zw / vec2(size);
+    vec3 c = vec3(0.0);
+    if (aa != 0) {
+        for (int j = 0; j < 4; ++j)
+            for (int i = 0; i < 4; ++i)
+                c += textureLod(src, rect.xy + (vec2(p) + (vec2(i, j) + 0.5) / 4.0) * px, 0.0).rgb;
+        c /= 16.0;
+    } else {
+        vec2 uv = rect.xy + (vec2(p) + 0.5) * px;
+        c = texelFetch(src, ivec2(uv * vec2(textureSize(src, 0))), 0).rgb;
+    }
+    imageStore(dst, p, vec4(c, 1.0));
+}

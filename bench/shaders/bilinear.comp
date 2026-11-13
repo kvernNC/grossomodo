@@ -1,0 +1,12 @@
+#version 450
+// SPDX-License-Identifier: GPL-3.0-or-later
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(binding = 0) uniform sampler2D src;
+layout(binding = 1, rgba8) uniform writeonly image2D dst;
+layout(push_constant) uniform PC { vec4 sizes; };
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p, ivec2(sizes.zw)))) return;
+    imageStore(dst, p, vec4(texture(src, (vec2(p) + 0.5) / sizes.zw).rgb, 1.0));
+}

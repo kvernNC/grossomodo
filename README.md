@@ -204,6 +204,14 @@ The layer only exports its three entry points and depends on libc only (libstdc+
 
 ### Benches and tests
 
+- **`bench/grossomodo_bench.cpp` — interactive comparison** (`scripts/package_bench.sh` -> `build/grossomodo-bench.tar.gz`):
+  a Vulkan + SDL2 app for the Deck (Desktop Mode, or Game Mode as a non-Steam game) or a PC. A large picture (a
+  built-in test pattern, plus your own PNG/JPG in `images/`) pans slowly, is "rendered" at 640x400 to 1024x640 with or
+  without anti-aliasing, and is upscaled to 1280x800 by two methods side by side (bilinear, FSR 1 EASU, RAVU-Lite AR
+  r3, RAVU-Lite r3, RAVU-Zoom r2, native), then sharpened by RCAS like gamescope. GPU time of each side is shown.
+  Controls: A/X next method right/left, Y split screen, D-pad up/down render resolution, L1/R1 sharpness, B pause,
+  View anti-aliasing, Menu next picture, R3 magnifier (keyboard: 2/1, S, arrows, [ ], Space, M, N, Z).
+
 - `harness/mock_gamescope.cpp`: reproduces gamescope's Vulkan sequence around FSR 1 (descriptor layout, EASU then
   RCAS) to test the layer without gamescope. With the layer, the image is bit-identical to the standalone RAVU bench
   (`harness/ravu_vk.cpp`), also for an exact x2 and in split screen; with `enabled=0`, bit-identical to FSR 1.
