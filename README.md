@@ -43,7 +43,9 @@ game (any API) ──► gamescope composites ──► "Sharp" filter
 | RCAS 1280x720 (both cases) | 0.16 ms |
 | **FSRCNNX 8 FP16 (7 passes) + Catmull-Rom downscale** | **2.21 ms** (network 1.92 + downscale 0.29) |
 | FSRCNNX at 1024x576 input | 3.39 ms |
-| FSRCNNX 640x400 -> 1280x800, direct x2 path (estimated) | ~1.4 ms |
+| FSRCNNX + blend, 640x400 -> 1280x800, direct x2 path (measured, report 4) | 2.11 ms |
+| FSRCNNX + blend, 800x500 -> 1280x800 (measured, report 4) | 3.21 ms |
+| EASU FP16 at 1280x800 output, any input (replaced by GrossoModo) | 0.52 ms |
 
 ### Quality (5 4K Elden Ring screenshots downscaled to 1280x720, before RCAS)
 
@@ -72,7 +74,11 @@ FSRCNNX alone shows more detail but also more shimmer on aliased games. The laye
 Measured with `scripts/sweep_800p.py` (raw numbers in `results/sweep-800p-2026-11-13.txt`): 16:10 renders upscaled
 to 1280x800, 5 4K screenshots cropped to 16:10, simulated slow pan, before RCAS. "Detail" is the fine detail kept
 (100 % = reference), "shimmer" the temporal error (lower is better). GrossoModo cost on the Deck is extrapolated from
-the measured passes (network proportional to render pixels; x2 exact skips the downscale pass).
+the measured passes (network proportional to render pixels; x2 exact skips the downscale pass). **These estimates
+were too low**: measured on the Deck (`results/deck-2026-11-13-rapport4.txt`, strength 0.5), the full chain costs
+2.11 ms at 640x400, 2.85 ms at 720x450, 3.21 ms at 800x500, 4.15 ms at 960x600 and 4.57 ms at 1024x640, because
+the last pass (downscale + EASU computed for the blend) costs ~1.07 ms at 1280x800. GrossoModo replaces gamescope's
+EASU (0.52 ms), so the extra cost over FSR 1 is about 0.5 ms less.
 
 | Render | Scale | Pixels | GrossoModo cost | FSR 1: PSNR / detail / shimmer | GrossoModo (strength 0.5): PSNR / detail / shimmer |
 |---|---|---|---|---|---|
@@ -114,8 +120,17 @@ FSR 1 and GrossoModo are measured before RCAS. 800x500 -> 1280x800:
 | LS1 Performance, sharpness 0 | 35.45 dB | 73 % | 1.557 |
 
 At every render resolution GrossoModo has the best fidelity and the least shimmer; LS1 shows more detail, much of it
-from sharpening (above 100 % at high sharpness, i.e. over-sharpened), and shimmers more than FSR 1 too. Its GPU cost
-on the Deck is not measured yet.
+from sharpening (above 100 % at high sharpness, i.e. over-sharpened), and shimmers more than FSR 1 too. On the Deck GPU (same report, sharpness 2) LS1 is much cheaper:
+
+| 1280x800 output | 640x400 | 720x450 | 800x500 | 960x600 | 1024x640 |
+|---|---|---|---|---|---|
+| EASU (FSR 1) | 0.52 ms | 0.53 ms | 0.52 ms | 0.52 ms | 0.53 ms |
+| GrossoModo (strength 0.5) | 2.11 ms | 2.85 ms | 3.21 ms | 4.15 ms | 4.57 ms |
+| LS1 Quality | 0.86 ms | 1.07 ms | 1.29 ms | 1.78 ms | 1.99 ms |
+| LS1 Performance | 0.45 ms | 0.54 ms | 0.64 ms | 0.88 ms | 0.98 ms |
+
+So GrossoModo buys the best fidelity and the least shimmer for about 2 ms more than LS1 Quality; LS1 Performance
+costs about as much as FSR 1, with more detail but more shimmer.
 
 ## Install on a Steam Deck
 
