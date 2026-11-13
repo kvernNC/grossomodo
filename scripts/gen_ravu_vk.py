@@ -43,11 +43,19 @@ layout(binding = 1) uniform writeonly image2D out_image;
 #define HOOKED_size (sizes.xy)
 #define HOOKED_pt (1.0 / sizes.xy)
 #define HOOKED_map(id) ((vec2(id) + 0.5) / sizes.zw)
-#define HOOKED_tex(p) texture(src_tex, (p))
+#define HOOKED_tex(p) TEX(p)
+const vec3 LUMA_W = vec3(0.2126, 0.7152, 0.0722);
 """
 code = code.replace("void hook() {", "void main() {\nif (any(greaterThanEqual(gl_GlobalInvocationID.xy, uvec2(sizes.zw)))) return;", 1)
 # Le retour anticipé avant barrier() est interdit : on borne l'écriture à la place.
 code = code.replace("void main() {\nif (any(greaterThanEqual(gl_GlobalInvocationID.xy, uvec2(sizes.zw)))) return;", "void main() {", 1)
+luma = "vec4(res, 0.0, 0.0, 0.0)" in code
+# Variante luminance : RAVU sur la luminance, couleur = bilinéaire + (luminance RAVU - luminance bilinéaire).
+head += ("#define TEX(p) vec4(dot(texture(src_tex, (p)).rgb, LUMA_W))\n" if luma else "#define TEX(p) texture(src_tex, (p))\n")
+code = code.replace("imageStore(out_image, ivec2(gl_GlobalInvocationID), vec4(res, 0.0, 0.0, 0.0));",
+                    "vec3 base = texture(src_tex, (vec2(gl_GlobalInvocationID.xy) + 0.5) / sizes.zw).rgb;\n"
+                    "if (all(lessThan(gl_GlobalInvocationID.xy, uvec2(sizes.zw)))) imageStore(out_image, ivec2(gl_GlobalInvocationID), "
+                    "vec4(clamp(base + (res - dot(base, LUMA_W)), 0.0, 1.0), 1.0));")
 code = code.replace("imageStore(out_image, ivec2(gl_GlobalInvocationID), vec4(res, 1.0));",
                     "if (all(lessThan(gl_GlobalInvocationID.xy, uvec2(sizes.zw)))) imageStore(out_image, ivec2(gl_GlobalInvocationID), vec4(clamp(res, 0.0, 1.0), 1.0));")
 open(os.path.join(out, "ravu.comp"), "w").write(head + code)

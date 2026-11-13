@@ -20,9 +20,9 @@ g++ -O2 -std=c++17 -static-libstdc++ -static-libgcc harness/fsrcnnx_vk.cpp -lvul
 g++ -O2 -std=c++17 -static-libstdc++ -static-libgcc harness/ls1_vk.cpp -lvulkan -o "$OUT/ls1_vk"
 gcc -O2 -std=c11 -D_POSIX_C_SOURCE=200809L -I/usr/include/vkd3d harness/ls1_translate.c -ldl -o "$OUT/ls1_translate"
 cp scripts/ls1_extract.py "$OUT/"
-# RAVU-Zoom (LGPL-3, third_party/mpv-prescalers) : une passe, deux tables.
+# RAVU-Zoom (LGPL-3, third_party/mpv-prescalers), variantes luminance : une passe, une ou deux tables.
 g++ -O2 -std=c++17 -static-libstdc++ -static-libgcc harness/ravu_vk.cpp -lvulkan -o "$OUT/ravu_vk"
-for r in ravu-zoom-ar-r3-rgb ravu-zoom-r3-rgb ravu-zoom-ar-r2-rgb; do
+for r in ravu-zoom-ar-r3 ravu-zoom-r3 ravu-zoom-ar-r2 ravu-zoom-r2; do
   python3 -I scripts/gen_ravu_vk.py third_party/mpv-prescalers/$r.hook "$OUT/$r" >/dev/null
   rm -f "$OUT/$r/ravu.comp"
 done
@@ -67,7 +67,7 @@ R=rapport.txt
     echo; echo "## $src -> 1280x800"
     ./harness shaders/cs_easu_fp16.spv in_$src.rgba /tmp/out.rgba 1280 800 200
     ./fsrcnnx_vk fsrcnnx8 in_$src.rgba /tmp/out.rgba 1280 800 200 fp16 strength=0.5
-    for r in ravu-zoom-ar-r3-rgb ravu-zoom-r3-rgb ravu-zoom-ar-r2-rgb; do ./ravu_vk $r in_$src.rgba /tmp/out.rgba 1280 800 200; done
+    for r in ravu-zoom-ar-r3 ravu-zoom-r3 ravu-zoom-ar-r2 ravu-zoom-r2; do ./ravu_vk $r in_$src.rgba /tmp/out.rgba 1280 800 200; done
     if [ -n "$LS1" ]; then
       ./ls1_vk "$LS1" quality 2 in_$src.rgba /tmp/out.rgba 1280 800 200
       ./ls1_vk "$LS1" performance 2 in_$src.rgba /tmp/out.rgba 1280 800 200
