@@ -7,6 +7,7 @@ which keeps its own license:
 | Material | Where | License |
 |---|---|---|
 | **FSRCNNX 8-0-4-1** network and weights, by igv (mpv user shader `FSRCNNX_x2_8-0-4-1.glsl`, release 1.1 of https://github.com/igv/FSRCNN-TensorFlow) | `third_party/fsrcnnx/`; translated to Vulkan compute shaders and embedded in `libVkLayer_GROSSOMODO_upscale.so` | **LGPL-3.0-or-later** (`third_party/fsrcnnx/LICENSE-LGPL-3.0.txt`, header of each file) |
+| **RAVU-Zoom** shaders and lookup tables, by bjin (`ravu-zoom-*-rgb.hook`, `compute/` of https://github.com/bjin/mpv-prescalers) | `third_party/mpv-prescalers/`; converted to Vulkan by `scripts/gen_ravu_vk.py` (benches) | **LGPL-3.0-or-later** (`third_party/mpv-prescalers/LICENSE-LGPL-3.0.txt`) |
 | FSRCNN architecture | Dong, Loy, Tang, *Accelerating the Super-Resolution Convolutional Neural Network*, ECCV 2016 | (paper) |
 | **AMD FidelityFX Super Resolution 1** (`ffx_a.h`, `ffx_fsr1.h`): EASU, used for the FSR 1 / FSRCNNX blend and the benches; RCAS, used in the benches | `third_party/gamescope/` | **MIT** (header of each file) |
 | **gamescope** shader headers (`descriptor_set.h`, `colorimetry.h`, ...) and `cs_easu*.comp`, commit 865a71c of https://github.com/ValveSoftware/gamescope | `third_party/gamescope/` | **BSD-2-Clause** (`third_party/gamescope/LICENSE`) |

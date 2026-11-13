@@ -25,11 +25,12 @@ from sweep_800p import CROP, OUT, SIZES  # noqa: E402
 
 
 def run_one(args):
-    path, size, frames, spv, variants = args
+    path, size, frames, spv, variants, ravus = args
     big = Image.open(path).convert("RGB")
     x0, y0 = (big.width - CROP[0] - frames) // 2, (big.height - CROP[1]) // 2
     tmp = tempfile.mkdtemp(prefix="ls1_")
-    methods = ["FSR1", "GM0.5"] + [f"LS1-{m[0].upper()}{v}" for m in ("quality", "performance") for v in variants]
+    methods = ["FSR1", "GM0.5"] + ([f"LS1-{m[0].upper()}{v}" for m in ("quality", "performance") for v in variants] if spv else []) \
+        + [os.path.basename(r.rstrip("/")) for r in ravus]
     refs, outs = [], {m: [] for m in methods}
     for t in range(frames):
         crop = big.crop((x0 + t, y0, x0 + t + CROP[0], y0 + CROP[1]))
@@ -44,7 +45,10 @@ def run_one(args):
             res[s] = np.asarray(poc_a.read_rgba(dst).convert("RGB"), np.float64)
         outs["FSR1"].append(res[0.0])
         outs["GM0.5"].append(np.clip(np.rint(res[0.0] + 0.5 * (res[1.0] - res[0.0])), 0, 255))
-        for m in ("quality", "performance"):
+        for r in ravus:
+            subprocess.run([os.path.join(poc_a.BUILD, "ravu_vk"), r, src, dst, str(OUT[0]), str(OUT[1])], check=True, stdout=subprocess.DEVNULL)
+            outs[os.path.basename(r.rstrip("/"))].append(np.asarray(poc_a.read_rgba(dst).convert("RGB"), np.float64))
+        for m in (("quality", "performance") if spv else ()):
             for v in variants:
                 subprocess.run([os.path.join(poc_a.BUILD, "ls1_vk"), spv, m, str(v), src, dst, str(OUT[0]), str(OUT[1])],
                                check=True, stdout=subprocess.DEVNULL)
@@ -66,7 +70,9 @@ def run_one(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ls1-spv", required=True)
+    ap.add_argument("--ls1-spv", default="")
+    ap.add_argument("--ravu", default="", help="dossiers générés par gen_ravu_vk.py, séparés par des virgules")
+    ap.add_argument("--sizes", default="")
     ap.add_argument("--frames", type=int, default=6)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--variants", default="0,2,4")
@@ -74,17 +80,19 @@ def main():
     variants = [int(v) for v in args.variants.split(",")]
     folder = os.path.join(poc_a.HERE, "data", "er_4k")
     files = sorted(os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png")))
-    tasks = [(f, s, args.frames, args.ls1_spv, variants) for s in SIZES for f in files]
+    sizes = [tuple(int(v) for v in x.split("x")) for x in args.sizes.split(",")] if args.sizes else SIZES
+    ravus = [r for r in args.ravu.split(",") if r]
+    tasks = [(f, s, args.frames, args.ls1_spv, variants, ravus) for s in sizes for f in files]
     acc = {}
     with ProcessPoolExecutor(args.jobs) as ex:
         for size, stats in ex.map(run_one, tasks):
             acc.setdefault(size, []).append(stats)
     print(f"{len(files)} captures, panoramique de {args.frames} images, vers 1280x800 ; FSR1/GM avant RCAS, LS1 avec sa netteté")
-    print(f"  {'rendu':>9} {'méthode':>8} {'PSNR':>8} {'détail':>7} {'scint.':>7}")
-    for size in SIZES:
+    print(f"  {'rendu':>9} {'méthode':>16} {'PSNR':>8} {'détail':>7} {'scint.':>7}")
+    for size in sizes:
         for m in acc[size][0]:
             p, d, te = (np.mean([x[m][i] for x in acc[size]]) for i in range(3))
-            print(f"  {size[0]:>4}x{size[1]:<4} {m:>8} {p:6.2f}dB {100 * d:6.1f}% {te:7.3f}")
+            print(f"  {size[0]:>4}x{size[1]:<4} {m:>16} {p:6.2f}dB {100 * d:6.1f}% {te:7.3f}")
         print()
 
 
