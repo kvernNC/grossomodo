@@ -37,6 +37,7 @@ def main():
     ap.add_argument("--test", required=True)
     ap.add_argument("--models", default="")
     ap.add_argument("--ls1-spv", default="")
+    ap.add_argument("--ravu", default="")
     ap.add_argument("--sizes", default="640x400,800x500,960x600")
     ap.add_argument("--frames", type=int, default=6)
     a = ap.parse_args()
@@ -68,6 +69,9 @@ def main():
                         subprocess.run([os.path.join(poc_a.BUILD, "ls1_vk"), a.ls1_spv, m, str(v), src, dst, str(OUT[0]), str(OUT[1])],
                                        check=True, stdout=subprocess.DEVNULL)
                         outs.setdefault(f"LS1-{m[0].upper()}{v}", []).append(rd())
+                for r in [r for r in a.ravu.split(",") if r]:
+                    subprocess.run([os.path.join(poc_a.BUILD, "ravu_vk"), r, src, dst, str(OUT[0]), str(OUT[1])], check=True, stdout=subprocess.DEVNULL)
+                    outs.setdefault(os.path.basename(r), []).append(rd())
                 x = torch.from_numpy(np.asarray(low, np.float32) / 255).permute(2, 0, 1)[None]
                 for name, net in models.items():
                     o = net(x, (OUT[1], OUT[0]))[0].permute(1, 2, 0).numpy()

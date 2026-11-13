@@ -221,8 +221,11 @@ int main(int argc, char **argv)
                     luts.push_back({nm, w, h, readFile(dir + "/" + nm + ".bin"), {}});
             }
         }
+        // RAVU-Lite : passe x2 à la résolution source (image rgba16f) puis réduction/recombinaison (final.spv).
+        const bool lite = std::ifstream(dir + "/final.spv").good();
         Tex src = makeTex(c, in.w, in.h, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         Tex fin = makeTex(c, outW, outH, VK_FORMAT_R8G8B8A8_UNORM, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        Tex x2 = makeTex(c, in.w * 2, in.h * 2, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
         size_t upSize = in.px.size();
         for (Lut &l : luts) {
             l.tex = makeTex(c, l.w, l.h, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -239,8 +242,10 @@ int main(int argc, char **argv)
         VkSamplerCreateInfo si{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         si.magFilter = si.minFilter = VK_FILTER_LINEAR;
         si.addressModeU = si.addressModeV = si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        VkSampler sampler;
+        VkSampler sampler, nearest;
         check(vkCreateSampler(c.device, &si, nullptr, &sampler), "vkCreateSampler");
+        si.magFilter = si.minFilter = VK_FILTER_NEAREST;
+        check(vkCreateSampler(c.device, &si, nullptr, &nearest), "vkCreateSampler");
 
         VkDescriptorSetLayoutBinding b[4] = {
             {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -272,9 +277,9 @@ int main(int argc, char **argv)
         VkPipeline pipe;
         check(vkCreateComputePipelines(c.device, VK_NULL_HANDLE, 1, &cpi, nullptr, &pipe), "vkCreateComputePipelines");
 
-        VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}};
+        VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}};
         VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        dpi.maxSets = 1;
+        dpi.maxSets = 2;
         dpi.poolSizeCount = 2;
         dpi.pPoolSizes = ps;
         VkDescriptorPool pool;
@@ -285,8 +290,8 @@ int main(int argc, char **argv)
         dai.pSetLayouts = &dsl;
         VkDescriptorSet set;
         check(vkAllocateDescriptorSets(c.device, &dai, &set), "vkAllocateDescriptorSets");
-        VkDescriptorImageInfo ii[4] = {{sampler, src.view, VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fin.view, VK_IMAGE_LAYOUT_GENERAL}};
-        for (size_t i = 0; i < luts.size(); ++i) ii[2 + i] = {sampler, luts[i].tex.view, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo ii[4] = {{sampler, src.view, VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, (lite ? x2 : fin).view, VK_IMAGE_LAYOUT_GENERAL}};
+        for (size_t i = 0; i < luts.size(); ++i) ii[2 + i] = {lite ? nearest : sampler, luts[i].tex.view, VK_IMAGE_LAYOUT_GENERAL};
         VkWriteDescriptorSet w[4]{};
         for (uint32_t k = 0; k < 2 + luts.size(); ++k) {
             w[k].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -297,6 +302,43 @@ int main(int argc, char **argv)
             w[k].pImageInfo = &ii[k];
         }
         vkUpdateDescriptorSets(c.device, 2 + uint32_t(luts.size()), w, 0, nullptr);
+
+        // Passe de réduction de RAVU-Lite : 0 source, 1 sortie, 2 image x2 ; même mise en page (3 échantillonneurs max).
+        VkPipeline pipe2 = VK_NULL_HANDLE;
+        VkDescriptorSet set2 = VK_NULL_HANDLE;
+        VkPipelineLayout layout2 = VK_NULL_HANDLE;
+        if (lite) {
+            VkDescriptorSetLayoutCreateInfo dli2{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+            dli2.bindingCount = 3;
+            dli2.pBindings = b;
+            VkDescriptorSetLayout dsl2;
+            check(vkCreateDescriptorSetLayout(c.device, &dli2, nullptr, &dsl2), "vkCreateDescriptorSetLayout");
+            VkPipelineLayoutCreateInfo pli2 = pli;
+            pli2.pSetLayouts = &dsl2;
+            check(vkCreatePipelineLayout(c.device, &pli2, nullptr, &layout2), "vkCreatePipelineLayout");
+            std::vector<char> spv2 = readFile(dir + "/final.spv");
+            VkShaderModuleCreateInfo smi2{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+            smi2.codeSize = spv2.size();
+            smi2.pCode = reinterpret_cast<const uint32_t *>(spv2.data());
+            VkShaderModule module2;
+            check(vkCreateShaderModule(c.device, &smi2, nullptr, &module2), "vkCreateShaderModule");
+            VkComputePipelineCreateInfo cpi2 = cpi;
+            cpi2.stage.module = module2;
+            cpi2.layout = layout2;
+            check(vkCreateComputePipelines(c.device, VK_NULL_HANDLE, 1, &cpi2, nullptr, &pipe2), "vkCreateComputePipelines");
+            VkDescriptorSetAllocateInfo dai2 = dai;
+            dai2.pSetLayouts = &dsl2;
+            check(vkAllocateDescriptorSets(c.device, &dai2, &set2), "vkAllocateDescriptorSets");
+            VkDescriptorImageInfo jj[3] = {{sampler, src.view, VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fin.view, VK_IMAGE_LAYOUT_GENERAL},
+                                           {sampler, x2.view, VK_IMAGE_LAYOUT_GENERAL}};
+            VkWriteDescriptorSet w2[3]{};
+            for (uint32_t k = 0; k < 3; ++k) {
+                w2[k] = w[k];
+                w2[k].dstSet = set2;
+                w2[k].pImageInfo = &jj[k];
+            }
+            vkUpdateDescriptorSets(c.device, 3, w2, 0, nullptr);
+        }
 
         VkQueryPoolCreateInfo qpi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
         qpi.queryType = VK_QUERY_TYPE_TIMESTAMP;
@@ -322,6 +364,7 @@ int main(int argc, char **argv)
         check(vkBeginCommandBuffer(cb, &cbi), "vkBeginCommandBuffer");
         toGeneral(cb, src.img, 1);
         toGeneral(cb, fin.img, 1);
+        toGeneral(cb, x2.img, 1);
         for (Lut &l : luts) toGeneral(cb, l.tex.img, 1);
         VkBufferImageCopy reg{};
         reg.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
@@ -343,6 +386,7 @@ int main(int argc, char **argv)
         check(vkQueueWaitIdle(c.queue), "vkQueueWaitIdle");
 
         const float pc[4] = {float(in.w), float(in.h), float(outW), float(outH)};
+        const float pcLite[4] = {float(in.w), float(in.h), float(2 * in.w), float(2 * in.h)};
         std::vector<double> ms;
         for (int r = 0; r < reps; ++r) {
             check(vkResetCommandBuffer(cb, 0), "vkResetCommandBuffer");
@@ -353,8 +397,19 @@ int main(int argc, char **argv)
             vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queries, 0);
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 1, &set, 0, nullptr);
-            vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, pc);
-            vkCmdDispatch(cb, (outW + 31) / 32, (outH + 7) / 8, 1);
+            if (lite) {
+                vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, pcLite);
+                vkCmdDispatch(cb, (in.w + 31) / 32, (in.h + 7) / 8, 1);
+                memoryBarrier(cb, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipe2);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, layout2, 0, 1, &set2, 0, nullptr);
+                vkCmdPushConstants(cb, layout2, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, pc);
+                vkCmdDispatch(cb, (outW + 7) / 8, (outH + 7) / 8, 1);
+            } else {
+                vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 16, pc);
+                vkCmdDispatch(cb, (outW + 31) / 32, (outH + 7) / 8, 1);
+            }
             vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries, 1);
             memoryBarrier(cb, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
             if (r == reps - 1) {
