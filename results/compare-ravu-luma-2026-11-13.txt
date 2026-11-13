@@ -1,0 +1,24 @@
+# scripts/compare_ls1.py --ravu build/ravu_zoom_*_luma (RAVU-Zoom luminance, couleur = bilinéaire + écart de luminance)
+5 captures, panoramique de 6 images, vers 1280x800 ; FSR1/GM avant RCAS, LS1 avec sa netteté
+      rendu          méthode     PSNR  détail  scint.
+   640x400              FSR1  33.95dB   46.4%   1.647
+   640x400             GM0.5  34.47dB   57.1%   1.610
+   640x400  ravu_zoom_ar_r3_luma  34.40dB   55.7%   1.591
+   640x400  ravu_zoom_r3_luma  34.35dB   61.6%   1.630
+   640x400  ravu_zoom_ar_r2_luma  34.33dB   54.5%   1.595
+   640x400  ravu_zoom_r2_luma  34.30dB   59.2%   1.630
+
+   800x500              FSR1  35.43dB   59.4%   1.534
+   800x500             GM0.5  35.98dB   69.8%   1.494
+   800x500  ravu_zoom_ar_r3_luma  35.94dB   68.9%   1.461
+   800x500  ravu_zoom_r3_luma  35.86dB   76.8%   1.502
+   800x500  ravu_zoom_ar_r2_luma  35.86dB   67.3%   1.466
+   800x500  ravu_zoom_r2_luma  35.81dB   74.0%   1.503
+
+   960x600              FSR1  37.08dB   70.6%   1.392
+   960x600             GM0.5  37.67dB   81.5%   1.347
+   960x600  ravu_zoom_ar_r3_luma  37.60dB   81.2%   1.309
+   960x600  ravu_zoom_r3_luma  37.39dB   91.0%   1.363
+   960x600  ravu_zoom_ar_r2_luma  37.52dB   79.4%   1.314
+   960x600  ravu_zoom_r2_luma  37.37dB   87.6%   1.361
+
